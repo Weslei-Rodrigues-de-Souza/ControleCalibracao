@@ -206,7 +206,7 @@ def lista_equipamentos():
     else:
         equipamentos_data = db.fetch_all_equipamentos_completos()
     
-    empresas_data = db.fetch_all_empresas()
+    empresas_calibracao_data = db.fetch_empresas_calibracao() # Use esta função
     empresas_unidade = db.fetch_empresas_unidade()
     equipamentos_display = []
 
@@ -244,7 +244,8 @@ def lista_equipamentos():
     return render_template('lista_equipamentos.html', 
                            equipamentos=equipamentos_display, 
                            search_query=search_query,
-                           empresas=empresas_unidade,
+                           empresas=empresas_unidade, # Manter para outros usos na página, se necessário
+                           empresas_calibracao=[dict(row) for row in empresas_calibracao_data], # Passar a lista de empresas de calibração
                            tipos_equip_para_modal=tipos_equip_para_modal,
                            REGRAS_VALIDACAO_CRITERIOS=REGRAS_VALIDACAO_CRITERIOS) 
 
@@ -297,8 +298,8 @@ def editar_equipamento(equip_id): # Mantém o nome da função, mas a rota é GE
     equip_data['empresa_id'] = equip_data.get('empresa_id') 
 
     # Buscar a lista completa de empresas
-    empresas_data = db.fetch_all_empresas()
-    empresas_list = [dict(row) for row in empresas_data]
+    empresas_unidade_data = db.fetch_empresas_unidade() # Buscar apenas empresas 'Unidade'
+    empresas_list = [dict(row) for row in empresas_unidade_data] # Usar a lista de empresas 'Unidade'
 
     unidades_medida = []
     if equip_data.get('tipo_equipamento_id'):
@@ -332,9 +333,6 @@ def get_analise_json(analise_id):
 
 @app.route('/tipo/json/<int:tipo_id>') 
 def tipo_json(tipo_id):
-    tipo_data_row = db.fetch_tipo_by_id(tipo_id)
-    if not tipo_data_row:
-        return jsonify({"error": "Tipo não encontrado"}), 404
     tipo_data = dict(tipo_data_row)
     empresas_data = db.fetch_all_empresas() 
     tipo_data['empresas'] = [dict(row) for row in empresas_data] 
@@ -672,7 +670,8 @@ def nova_analise(equip_id):
             'data_calibracao_analisada': request.form.get('analise_data_calibracao') or None,
             'data_prox_calibracao_analisada': request.form.get('analise_data_prox_calibracao') or None,
             'resultado_geral_certificado': request.form.get('analise_resultado_geral'),
-            'observacoes_analise': request.form.get('analise_observacoes')
+ 'observacoes_analise': request.form.get('analise_observacoes'),
+ 'empresa_calibracao_id': request.form.get('analiseEmpresaCalibracao') if request.form.get('analiseEmpresaCalibracao') not in [None, "None", ""] else None
         }
         pontos_json = request.form.get('analise_pontos_json_data')
         
@@ -1409,3 +1408,11 @@ if __name__ == '__main__':
         db.update_schema()
 
     app.run(debug=True)
+@app.route('/equipamento/<int:equip_id>/analise/nova_form')
+def nova_analise_form(equip_id):
+    equip = db.fetch_equipamento_completo_by_id(equip_id)
+    if not equip:
+        return jsonify({"error": "Equipamento não encontrado"}), 404
+
+    empresas_calibracao = db.fetch_empresas_calibracao()
+    return render_template('partials/form_nova_analise.html', equip=equip, empresas_calibracao=empresas_calibracao)

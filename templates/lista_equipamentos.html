@@ -417,6 +417,20 @@
                         </div>
                     </div>
                     <div class="form-row">
+ <div class="form-group col-md-12">
+ <label for="analiseEmpresaCalibracao">Empresa de Calibração</label>
+ <select class="form-control select2-basic" id="analiseEmpresaCalibracao" name="empresa_calibracao_id">
+ <option value="">Selecione a Empresa</option>
+ {% if empresas_calibracao %}
+ {% for empresa in empresas_calibracao %}
+ <option value="{{ empresa.id }}">{{ empresa.nome_fantasia or empresa.razao_social }}</option>
+ {% endfor %}
+ {% endif %}
+ </select>
+ </div>
+ </div>
+                    <div class="form-row">
+ 
                         <div class="form-group col-md-4">
                             <label for="analise_data_manual">Data da Análise (Manual)</label>
                             <input type="date" class="form-control" id="analise_data_manual" name="analise_data_manual">
@@ -673,8 +687,9 @@
         $('#editEquipamentoModal').on('shown.bs.modal', function () {
             initializeSelect2($(this), $('#edit_tipo_equipamento_id'), 'Selecione um tipo');
             initializeSelect2($(this), $('#edit_status_lista'), 'Selecione um status');
+ initializeSelect2($(this), $('#edit_empresa_id'), 'Selecione uma empresa');
         });
-        
+
         $('#addEquipamentoModal').on('hidden.bs.modal', function () {
             $(this).find('form')[0].reset(); 
             if ($('#modal_add_tipo_equipamento_id').data('select2')) {
@@ -686,6 +701,11 @@
             if ($('#modal_add_empresa_id').data('select2')) {
                  $('#modal_add_empresa_id').val(null).trigger('change');
             }
+            // Reset Select2 for analysis modal when edit/add equipment modal closes
+            if ($('#analiseEmpresaCalibracao').data('select2')) {
+                 $('#analiseEmpresaCalibracao').val(null).trigger('change');
+            }
+
             if (modalAddAtivoCheckbox) modalAddAtivoCheckbox.checked = true;
             if (document.getElementById('modal_add_requer_calibracao')) document.getElementById('modal_add_requer_calibracao').checked = true;
             toggleModalAddDestinoInativo(); 
@@ -739,7 +759,14 @@
  });
  }
                         // Corrigido para selecionar o valor correto
-                        if (equip.empresa_id !== null) {
+ // Modificado para pré-selecionar a empresa no dropdown 'edit_empresa_id'
+ if (equip.empresa_id !== null && empresasSelectEdit) {
+ // Percorrer as opções do Select2 para encontrar e selecionar
+ empresasSelectEdit.find('option').each(function() {
+ if ($(this).val() == String(equip.empresa_id)) {
+ $(this).prop('selected', true);
+ }
+ });
                             empresasSelectEdit.val(String(equip.empresa_id)).trigger('change');
                         } else {
                             empresasSelectEdit.val('').trigger('change');
@@ -892,6 +919,11 @@
             analiseForm.trigger('reset');
             $('#analise_anexos_existentes_container').html('');
             analiseModal.find('#analise_equip_id_hidden').val(equipId);
+
+            // Initialize Select2 for the company dropdown in the analysis modal
+            if (!$('#analiseEmpresaCalibracao').data('select2')) {
+                initializeSelect2(analiseModal, $('#analiseEmpresaCalibracao'), 'Selecione a Empresa');
+            }
             
             setupAnaliseModalViewMode(isCurrentAnaliseEditable);
 
@@ -917,6 +949,13 @@
                             analiseModal.find('#analise_data_prox_calibracao').val(an.data_prox_calibracao_analisada || '');
                             analiseModal.find('#analise_resultado_geral').val(an.resultado_geral_certificado || '');
                             analiseModal.find('#analise_observacoes').val(an.observacoes_analise || '');
+
+                            // Select the correct company
+                            if (an.empresa_calibracao_id !== null) {
+ $('#analiseEmpresaCalibracao').val(String(an.empresa_calibracao_id)).trigger('change');
+                            } else {
+ $('#analiseEmpresaCalibracao').val('').trigger('change');
+                            }
 
                             var anexosHtml = '';
                             if (an.anexos && an.anexos.length > 0) {
@@ -988,6 +1027,11 @@
         $('#analiseModal').on('hidden.bs.modal', function () {
             $(this).find('form')[0].reset();
             $('#analise_anexos_existentes_container').html('');
+
+            // Reset the Select2 dropdown for companies
+            if ($('#analiseEmpresaCalibracao').data('select2')) {
+                 $('#analiseEmpresaCalibracao').val(null).trigger('change');
+            }
             currentAnalisePontos = [];
             renderPontosAnaliseList();
             currentAnaliseUnidadesMedida = []; 
@@ -1187,6 +1231,7 @@
                 }
                 $('#ponto_lista_unidades_tipo').html(listaUnidadesHtml);
                 
+                
                 if (currentAnaliseUnidadesMedida && currentAnaliseUnidadesMedida.some(u => u.nome_unidade === ponto.nome_ponto)) {
                      selectUnidades.val(ponto.nome_ponto);
                 }
@@ -1222,14 +1267,13 @@
 
         $('#analiseForm').on('submit', function(e) {
             e.preventDefault(); 
-            var form = $(this);
+            var form = this; // Use o elemento DOM nativo
             var formData = new FormData(this); 
 
             formData.append('analise_pontos_json_data', JSON.stringify(currentAnalisePontos));
-            
+
             $.ajax({
-               
-                url: form.attr('action'),
+                url: form.action, // Use a propriedade action do elemento DOM
                 method: 'POST',
                 data: formData,
                 processData: false, 
@@ -1237,7 +1281,18 @@
                 success: function(response) {
                     if (response.success) {
                         $('#analiseModal').modal('hide');
-                        window.location.reload(); 
+                        // Atualize o histórico de análises no modal de edição do equipamento
+                        if (response.historico_analises && response.equip_id == currentEditingEquipId) {
+                            renderHistoricoAnalises(response.historico_analises, response.equip_id, currentAnaliseUnidadesMedida);
+                            showToast("Sucesso", response.message || "Nova análise adicionada!", true);
+                            // Reabre o modal de edição do equipamento, se necessário
+                            if (!$('#editEquipamentoModal').hasClass('show')) {
+                                $('#editEquipamentoModal').modal('show');
+                            }
+                        } else {
+                            // Se não for possível atualizar, recarregue como fallback
+                            window.location.reload();
+                        }
                     } else {
                         showToast("Erro ao Salvar Análise", response.message || "Erro desconhecido.", false);
                     }

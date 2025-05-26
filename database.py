@@ -568,3 +568,6 @@ class DatabaseManager:
         query = "SELECT * FROM tipos_equipamento WHERE id = ?"
         return self.execute_query(query, (tipo_id,), fetch_one=True)
 
+    def fetch_empresas_calibracao(self):
+        query = "SELECT * FROM empresas WHERE categoria = 'Calibração'"
+        return self.execute_query(query, fetch_all=True) or []
