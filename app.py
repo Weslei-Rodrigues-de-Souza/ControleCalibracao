@@ -277,12 +277,16 @@ def adicionar_usuario():
     username = request.form.get('username')
     # Gerar uma senha temporária e marcar para troca obrigatória
     temporary_password = "changeme123" # Senha temporária simples, idealmente mais complexa ou gerada aleatoriamente
-    hashed_password = generate_password_hash(temporary_password, method='sha256')
+    hashed_password = generate_password_hash(temporary_password, method='pbkdf2:sha256')
 
     db_instance = db
     try:
-        success = db_instance.create_user(username, hashed_password, requires_password_change=True)
+        success = db_instance.create_user(username, hashed_password)
         if success:
+            # Marcar para troca obrigatória de senha
+            novo_usuario = db_instance.get_user_by_username(username)
+            if novo_usuario:
+                db_instance.set_password_change_required(novo_usuario['id'], True)
             flash(f'Usuário "{username}" criado com sucesso. Senha temporária: "{temporary_password}". Requer troca no primeiro login.', 'success')
         else:
             flash(f'Erro ao criar usuário "{username}". Nome de usuário já existe?', 'danger')
@@ -292,83 +296,17 @@ def adicionar_usuario():
     return redirect(url_for('gerenciar_usuarios'))
 
 @app.route('/alterar_senha', methods=['POST'])
-@login_required # Protegida por login
+@login_required
 def alterar_senha():
-    # Keep this route function here, the class definition is moved above
-    def load_notification_settings(self): 
-        default_settings = {
-            "remetente_email": "", "remetente_senha": "", "para": "", "cc": "",
-            "assunto": "Alerta de Calibrações Vencendo/Próximas",
-            "corpo_template_email": "<p>Atenção, os seguintes equipamentos estão próximos do vencimento ou vencidos:</p>\n\n{tabela_equipamentos}\n\n<p>Por favor, verifique o sistema.</p>",
-            "campos_tabela": {key: True for key in CAMPOS_TABELA_NOTIFICACAO},
-            "zapi_instancia": "", "zapi_token_instancia": "", "zapi_client_token": "", "gemini_api_key": "",
-            "whatsapp_para": "", "corpo_template_whatsapp": "Alerta de Calibração:\n\n{tabela_equipamentos_texto}\n\nVerifique o sistema.",
-            "criterio_padrao_vencimento": CRITERIOS_VENCIMENTO_NOTIFICACAO[0],
-            "agendamento_periodicidade": PERIODICIDADE_NOTIFICACAO[0],
-            "agendamento_data_inicio": datetime.date.today().strftime("%d/%m/%Y"),
-            "agendamento_horario": HORARIOS_NOTIFICACAO[8], 
-            "criterio_email_manual": CRITERIOS_VENCIMENTO_NOTIFICACAO_MANUAL[0],
-            "criterio_wpp_manual": CRITERIOS_VENCIMENTO_NOTIFICACAO_MANUAL[0]
-        }
-        try:
-            if os.path.exists(NOTIFICACAO_CONFIG_FILE_PATH):
-                with open(NOTIFICACAO_CONFIG_FILE_PATH, 'r') as f:
-                    loaded_settings = json.load(f)
-                    for key, value in default_settings.items():
-                        if key not in loaded_settings:
-                            loaded_settings[key] = value
-                        elif key == "campos_tabela" and isinstance(loaded_settings[key], dict):
-                             for camp_key in CAMPOS_TABELA_NOTIFICACAO:
-                                if camp_key not in loaded_settings[key]:
-                                    loaded_settings[key][camp_key] = True
-                    return loaded_settings
-        except (IOError, json.JSONDecodeError) as e:
-            print(f"Erro ao carregar {NOTIFICACAO_CONFIG_FILE_PATH}: {e}. Usando configurações padrão.")
-        return default_settings
-    current_password = request.form.get('current_password')
-    new_password = request.form.get('new_password')
-    confirm_password = request.form.get('confirm_password')
-
-    db_instance = db # Obter a instância do banco de dados
-    user_data = db_instance.get_user_by_id(current_user.id)
-
-    # Verificar se a senha atual corresponde (apenas se não for uma senha temporária forçando a troca)
-    if user_data and not current_user.requires_password_change and not check_password_hash(user_data['senha'], current_password):
-        flash('Senha atual incorreta.', 'danger')
-        # Se for AJAX, retorna JSON
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-             return jsonify({'status': 'error', 'message': 'Senha atual incorreta.'})
-        return redirect(url_for('gerenciar_usuarios')) # Redireciona de volta
-
-    if new_password != confirm_password:
-        flash('A nova senha e a confirmação não coincidem.', 'danger')
-        # Se for AJAX, retorna JSON
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-             return jsonify({'status': 'error', 'message': 'A nova senha e a confirmação não coincidem.'})
+    nova_senha = request.form.get('nova_senha')
+    confirmar_senha = request.form.get('confirmar_senha')
+    if not nova_senha or nova_senha != confirmar_senha:
+        flash('As senhas não coincidem.', 'danger')
         return redirect(url_for('gerenciar_usuarios'))
-
-    hashed_new_password = generate_password_hash(new_password, method='sha256')
-
-    try:
-        db_instance.update_user_password(current_user.id, hashed_new_password)
-        # Desmarcar a necessidade de troca de senha após a alteração bem-sucedida
-        db_instance.set_password_change_required(current_user.id, False)
-        # Atualizar o objeto current_user na sessão se possível (ou apenas confiar na próxima recarga)
-        current_user.requires_password_change = False
-
-        flash('Senha alterada com sucesso!', 'success')
-        # Se for AJAX, retorna JSON
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-             return jsonify({'status': 'success', 'message': 'Senha alterada com sucesso!'})
-        return redirect(url_for('gerenciar_usuarios')) # Redireciona para a página de gerenciamento de usuários
-    except Exception as e:
-        print(f"Erro ao alterar a senha: {e}")
-        flash('Ocorreu um erro ao alterar a senha.', 'danger')
-        # Se for AJAX, retorna JSON
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-             return jsonify({'status': 'error', 'message': 'Ocorreu um erro ao alterar a senha.'})
-        return redirect(url_for('gerenciar_usuarios'))
-
+    db.update_user_password(current_user.id, generate_password_hash(nova_senha, method='pbkdf2:sha256'))
+    db.set_password_change_required(current_user.id, False)
+    flash('Senha alterada com sucesso!', 'success')
+    return redirect(url_for('dashboard'))
 
 @app.context_processor
 def inject_utilities():
@@ -1426,6 +1364,7 @@ def exportar_individual_excel(equip_id):
     ws_pontos.append(headers_pontos)
     for col_num, header_title in enumerate(headers_pontos, 1):
         ws_pontos.cell(row=1, column=col_num).font = Font(bold=True)
+       
         ws_pontos.cell(row=1, column=col_num).alignment = Alignment(horizontal="center")
 
     ws_anexos = wb.create_sheet(title="Anexos")

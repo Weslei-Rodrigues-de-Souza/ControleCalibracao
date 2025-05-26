@@ -17,40 +17,38 @@
                 Por favor, altere sua senha temporária.
             </div>
             {% endif %}
-             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#changePasswordModal" data-user-id="{{ current_user.id }}">
+             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAlterarSenha" data-user-id="{{ current_user.id }}">
                 Alterar Minha Senha
             </button>
         {% endif %}
     </div>
 
     <!-- Modal de Alteração de Senha -->
-    <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="changePasswordModalLabel">Alterar Senha</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="changePasswordForm">
-                        <input type="hidden" id="modal-user-id" name="user_id" value="{{ current_user.id }}"> {# Para o usuário logado, usamos current_user.id #}
-                        <div class="mb-3">
-                            <label for="current_password" class="form-label">Senha Atual</label>
-                            <input type="password" class="form-control" id="current_password" name="current_password" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="new_password" class="form-label">Nova Senha</label>
-                            <input type="password" class="form-control" id="new_password" name="new_password" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="confirm_password" class="form-label">Confirmar Nova Senha</label>
-                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary">Salvar Nova Senha</button>
-                    </form>
-                </div>
+    <div class="modal fade" id="modalAlterarSenha" tabindex="-1" aria-labelledby="modalAlterarSenhaLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <form method="POST" action="{{ url_for('alterar_senha') }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="modalAlterarSenhaLabel">Alterar Senha</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
+            <div class="modal-body">
+              <div class="mb-3">
+                <label for="novaSenha" class="form-label">Nova Senha</label>
+                <input type="password" class="form-control" id="novaSenha" name="nova_senha" required>
+              </div>
+              <div class="mb-3">
+                <label for="confirmarSenha" class="form-label">Confirmar Nova Senha</label>
+                <input type="password" class="form-control" id="confirmarSenha" name="confirmar_senha" required>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
         </div>
+      </div>
     </div>
 </div>
 {% endblock %}
@@ -59,14 +57,14 @@
 {{ super() }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const changePasswordModal = document.getElementById('changePasswordModal');
-    const changePasswordForm = document.getElementById('changePasswordForm');
+    const modalAlterarSenha = document.getElementById('modalAlterarSenha');
+    const changePasswordForm = modalAlterarSenha.querySelector('form');
 
     // Optional: Set user ID if needed when modal opens (more relevant for admin changing others' passwords)
-    changePasswordModal.addEventListener('show.bs.modal', function (event) {
+    modalAlterarSenha.addEventListener('show.bs.modal', function (event) {
         // const button = event.relatedTarget; // Button that triggered the modal
         // const userId = button.getAttribute('data-user-id'); // Extract info from data-* attributes
-        // const modalUserIdInput = changePasswordModal.querySelector('#modal-user-id');
+        // const modalUserIdInput = modalAlterarSenha.querySelector('#modal-user-id');
         // if (modalUserIdInput) {
         //     modalUserIdInput.value = userId;
         // }
@@ -80,8 +78,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const userId = formData.get('user_id'); // Get user_id from hidden input
 
             // Basic validation (more comprehensive validation should be on the backend)
-            const newPassword = formData.get('new_password');
-            const confirmPassword = formData.get('confirm_password');
+            const newPassword = formData.get('nova_senha');
+            const confirmPassword = formData.get('confirmar_senha');
             if (newPassword !== confirmPassword) {
                  alert('A nova senha e a confirmação não coincidem.'); // Use a flash message or better UI feedback
                  return;
@@ -97,7 +95,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Assuming you have a way to show flash messages in base.html or via JS
                     // For simplicity, using alert here. You should use Flask's flash messages.
                      alert(data.message); // Show success message
-                    const modal = bootstrap.Modal.getInstance(changePasswordModal);
+                    const modal = bootstrap.Modal.getInstance(modalAlterarSenha);
                     modal.hide(); // Close the modal
 
                     // Optional: Redirect or update UI after successful password change
