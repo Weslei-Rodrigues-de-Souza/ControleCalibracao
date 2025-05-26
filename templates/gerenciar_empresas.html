@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciar Empresas{% endblock %}
+
+{% block head_extra %}
+<style>
+    .action-buttons .btn {
+        margin-right: 5px;
+    }
+    #empresaModal .modal-body {
+        max-height: 75vh;
+        overflow-y: auto;
+    }
+    #tabelaEmpresas th, #tabelaEmpresas td {
+        text-align: center;
+        vertical-align: middle;
+    }
+    #tabelaEmpresas td:nth-child(2), /* CNPJ */
+    #tabelaEmpresas td:nth-child(3), /* Razão Social */
+    #tabelaEmpresas td:nth-child(4), /* Nome Fantasia */
+    #tabelaEmpresas td:nth-child(5) { /* Município/UF */
+        text-align: left;
+    }
+    #tabelaEmpresas th:nth-child(2),
+    #tabelaEmpresas th:nth-child(3),
+    #tabelaEmpresas th:nth-child(4),
+    #tabelaEmpresas th:nth-child(5) {
+        text-align: left;
+    }
+    #tabelaEmpresas th:last-child, 
+    #tabelaEmpresas td:last-child { 
+         width: 170px; 
+         min-width: 170px;
+         text-align: center !important;
+    }
+    .iso-status {
+        font-size: 0.9em;
+        margin-top: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Gerenciar Empresas</h2>
+    <button type="button" class="btn btn-success" data-toggle="modal" data-target="#empresaModal" id="btnAdicionarNovaEmpresa">
+        ➕ Adicionar Nova Empresa
+    </button>
+</div>
+
+{% if empresas %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover" id="tabelaEmpresas">
+        <thead class="thead-dark">
+            <tr>
+                <th>ID</th>
+                <th>CNPJ</th>
+                <th>Razão Social</th>
+                <th>Nome Fantasia</th>
+                <th>Município/UF</th>
+                <th>Categoria</th>
+                <th>Cert. ISO</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for empresa in empresas %}
+            <tr>
+                <td>{{ empresa.id }}</td>
+                <td>{{ empresa.cnpj }}</td>
+                <td>{{ empresa.razao_social or 'N/A' }}</td>
+                <td>{{ empresa.nome_fantasia or 'N/A' }}</td>
+                <td>{{ empresa.municipio or 'N/A' }} / {{ empresa.uf or 'N/A' }}</td>
+                <td><span class="badge {% if empresa.categoria == 'Calibração' %}badge-primary{% else %}badge-secondary{% endif %}">{{ empresa.categoria }}</span></td>
+                <td>
+                    {% if empresa.categoria == 'Calibração' %}
+                        {% if empresa.certificado_iso_path %}
+                            <a href="{{ url_for('servir_anexo_empresa', subpath=empresa.certificado_iso_path) }}" target="_blank" class="badge badge-success">Ver Certificado</a>
+                        {% else %}
+                            <span class="badge badge-warning">Pendente</span>
+                        {% endif %}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td class="action-buttons">
+                    <button type="button" class="btn btn-sm btn-outline-primary btn-edit-empresa"
+                            data-toggle="modal" data-target="#empresaModal"
+                            data-empresa-id="{{ empresa.id }}" title="Editar Empresa">📝</button>
+                    <form action="{{ url_for('excluir_empresa', empresa_id=empresa.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Tem certeza que deseja excluir esta empresa?');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir Empresa">🗑️</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    Nenhuma empresa cadastrada.
+</div>
+{% endif %}
+
+<div class="modal fade" id="empresaModal" tabindex="-1" role="dialog" aria-labelledby="empresaModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <form id="empresaForm" method="POST" enctype="multipart/form-data"> {# Action será definida por JS, adicionado enctype #}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="empresaModalLabel">Adicionar Nova Empresa</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="edit_empresa_id" name="empresa_id">
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label for="empresa_cnpj">CNPJ*</label>
+                            <input type="text" class="form-control" id="empresa_cnpj" name="empresa_cnpj" required placeholder="XX.XXX.XXX/XXXX-XX" maxlength="18">
+                            <small id="cnpj_status" class="form-text"></small>
+                        </div>
+                        <div class="form-group col-md-8">
+                            <label for="empresa_razao_social">Razão Social</label>
+                            <input type="text" class="form-control" id="empresa_razao_social" name="empresa_razao_social">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-8">
+                            <label for="empresa_nome_fantasia">Nome Fantasia</label>
+                            <input type="text" class="form-control" id="empresa_nome_fantasia" name="empresa_nome_fantasia">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="empresa_categoria">Categoria*</label>
+                            <select class="form-control" id="empresa_categoria" name="empresa_categoria" required>
+                                <option value="">Selecione...</option>
+                                <option value="Calibração">Empresa de Calibração</option>
+                                <option value="Unidade">Unidade (Empresa Usuária)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="iso_upload_section" style="display: none;"> {# Seção para upload do ISO #}
+                        <hr>
+                        <h6>Certificado ISO 9001 (para Empresas de Calibração)</h6>
+                        <div class="form-group">
+                            <label for="empresa_certificado_iso">Anexar Certificado ISO (.pdf, .jpg, .png)</label>
+                            <input type="file" class="form-control-file" id="empresa_certificado_iso" name="empresa_certificado_iso" accept=".pdf,.jpg,.jpeg,.png">
+                            <small id="certificado_iso_status" class="form-text mt-1"></small>
+                        </div>
+                         <div id="certificado_iso_atual_container" class="mb-2" style="display:none;">
+                            <p class="mb-0"><strong>Certificado Atual:</strong> <a href="#" id="link_certificado_iso_atual" target="_blank"></a></p>
+                            <input type="checkbox" id="remover_certificado_iso_atual" name="remover_certificado_iso_atual" value="1">
+                            <label for="remover_certificado_iso_atual" class="form-check-label">Remover certificado atual ao salvar</label>
+                        </div>
+                    </div>
+
+
+                    <hr>
+                    <h6>Endereço</h6>
+                    <div class="form-row">
+                        <div class="form-group col-md-2">
+                            <label for="empresa_cep">CEP</label>
+                            <input type="text" class="form-control" id="empresa_cep" name="empresa_cep" placeholder="XXXXX-XXX" maxlength="9">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="empresa_logradouro">Logradouro</label>
+                            <input type="text" class="form-control" id="empresa_logradouro" name="empresa_logradouro">
+                        </div>
+                        <div class="form-group col-md-2">
+                            <label for="empresa_numero">Número</label>
+                            <input type="text" class="form-control" id="empresa_numero" name="empresa_numero">
+                        </div>
+                         <div class="form-group col-md-2">
+                            <label for="empresa_uf">UF</label>
+                            <input type="text" class="form-control" id="empresa_uf" name="empresa_uf" maxlength="2">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label for="empresa_complemento">Complemento</label>
+                            <input type="text" class="form-control" id="empresa_complemento" name="empresa_complemento">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="empresa_bairro">Bairro</label>
+                            <input type="text" class="form-control" id="empresa_bairro" name="empresa_bairro">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="empresa_municipio">Município</label>
+                            <input type="text" class="form-control" id="empresa_municipio" name="empresa_municipio">
+                        </div>
+                    </div>
+                    <hr>
+                    <h6>Contato</h6>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="empresa_telefone">Telefone</label>
+                            <input type="text" class="form-control" id="empresa_telefone" name="empresa_telefone" placeholder="(XX) XXXXX-XXXX">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="empresa_email">E-mail</label>
+                            <input type="email" class="form-control" id="empresa_email" name="empresa_email">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Empresa</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+$(document).ready(function() {
+    $('#tabelaEmpresas').DataTable({
+        "language": {
+            "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json",
+            "lengthMenu": "Mostrar _MENU_ registros por página",
+            "zeroRecords": "Nenhuma empresa encontrada",
+            "info": "Mostrando página _PAGE_ de _PAGES_",
+            "infoEmpty": "Nenhum registro disponível",
+            "infoFiltered": "(filtrado de _MAX_ registros totais)",
+            "search": "Pesquisar:",
+             "paginate": {
+                "first":      "Primeiro",
+                "last":       "Último",
+                "next":       "Próximo",
+                "previous":   "Anterior"
+            }
+        },
+        "lengthMenu": [[5, 10, 25, 50, -1], [5, 10, 25, 50, "Todos"]],
+        "pageLength": 10,
+        "responsive": true,
+        "columnDefs": [
+            { "orderable": false, "targets": -1 } 
+        ]
+    });
+
+    function toggleIsoUploadSection() {
+        var categoria = $('#empresa_categoria').val();
+        var empresaId = $('#edit_empresa_id').val(); 
+        var certificadoPath = $('#link_certificado_iso_atual').data('path'); 
+
+        if (categoria === 'Calibração') {
+            $('#iso_upload_section').show();
+            if (empresaId && certificadoPath && certificadoPath !== 'N/A' && certificadoPath !== '') {
+                 $('#certificado_iso_status').html(`<span class="text-success">Certificado ISO já anexado.</span>`);
+                 $('#link_certificado_iso_atual').attr('href', "{{ url_for('servir_anexo_empresa', subpath='') }}" + certificadoPath).text(certificadoPath.split(/[\\/]/).pop()); 
+                 $('#certificado_iso_atual_container').show();
+            } else {
+                $('#certificado_iso_status').html('<span class="text-warning">Certificado ISO pendente de upload.</span>');
+                $('#certificado_iso_atual_container').hide();
+            }
+        } else {
+            $('#iso_upload_section').hide();
+            $('#certificado_iso_status').text('');
+            $('#certificado_iso_atual_container').hide();
+            $('#empresa_certificado_iso').val(''); 
+            $('#remover_certificado_iso_atual').prop('checked', false);
+        }
+    }
+
+    $('#empresa_categoria').on('change', toggleIsoUploadSection);
+
+
+    $('#btnAdicionarNovaEmpresa').on('click', function() {
+        $('#empresaModalLabel').text('Adicionar Nova Empresa');
+        $('#empresaForm').attr('action', "{{ url_for('salvar_empresa') }}"); 
+        $('#empresaForm').trigger('reset');
+        $('#edit_empresa_id').val('');
+        $('#cnpj_status').text('');
+        $('#empresa_categoria').val("").trigger('change'); 
+        toggleIsoUploadSection(); 
+    });
+
+    $(document).on('click', '.btn-edit-empresa', function() {
+        var empresaId = $(this).data('empresa-id');
+        $('#empresaModalLabel').text('Editar Empresa ID: ' + empresaId);
+        $('#empresaForm').attr('action', "{{ url_for('salvar_empresa', empresa_id=0) }}".replace('0', empresaId));
+        $('#empresaForm').trigger('reset');
+        $('#edit_empresa_id').val(empresaId);
+        $('#cnpj_status').text('');
+        $('#certificado_iso_atual_container').hide();
+        $('#link_certificado_iso_atual').attr('href', '#').text('');
+        $('#remover_certificado_iso_atual').prop('checked', false);
+
+
+        $.ajax({
+            url: "{{ url_for('empresa_json', empresa_id=0) }}".replace('0', empresaId),
+            method: 'GET',
+            success: function(response) {
+                if (response.error) {
+                    showToast('Erro', response.error, false);
+                } else {
+                    $('#empresa_cnpj').val(formatCnpj(response.cnpj || '')); 
+                    $('#empresa_razao_social').val(response.razao_social || '');
+                    $('#empresa_nome_fantasia').val(response.nome_fantasia || '');
+                    $('#empresa_logradouro').val(response.logradouro || '');
+                    $('#empresa_numero').val(response.numero || '');
+                    $('#empresa_complemento').val(response.complemento || '');
+                    $('#empresa_bairro').val(response.bairro || '');
+                    $('#empresa_cep').val(formatCep(response.cep || '')); 
+                    $('#empresa_municipio').val(response.municipio || '');
+                    $('#empresa_uf').val(response.uf || '');
+                    $('#empresa_telefone').val(formatTelefone(response.telefone || '')); 
+                    $('#empresa_email').val(response.email || '');
+                    $('#empresa_categoria').val(response.categoria || '').trigger('change'); 
+
+                    if (response.categoria === 'Calibração') {
+                        if (response.certificado_iso_path) {
+                             $('#link_certificado_iso_atual').attr('href', "{{ url_for('servir_anexo_empresa', subpath='') }}" + response.certificado_iso_path)
+                                                            .text(response.certificado_iso_path.split(/[\\/]/).pop())
+                                                            .data('path', response.certificado_iso_path); 
+                            $('#certificado_iso_status').html(`<span class="text-success">Certificado ISO anexado.</span>`);
+                            $('#certificado_iso_atual_container').show();
+                        } else {
+                            $('#certificado_iso_status').html('<span class="text-warning">Certificado ISO pendente de upload.</span>');
+                            $('#certificado_iso_atual_container').hide();
+                        }
+                    } else {
+                         $('#iso_upload_section').hide();
+                    }
+                }
+            },
+            error: function() {
+                showToast('Erro', 'Falha ao carregar dados da empresa.', false);
+            }
+        });
+    });
+    
+    function formatCnpj(cnpj) {
+        cnpj = cnpj.replace(/\D/g, ''); 
+        if (cnpj.length > 14) cnpj = cnpj.substring(0, 14);
+
+        cnpj = cnpj.replace(/^(\d{2})(\d)/, '$1.$2');
+        cnpj = cnpj.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+        cnpj = cnpj.replace(/\.(\d{3})(\d)/, '.$1/$2');
+        cnpj = cnpj.replace(/(\d{4})(\d)/, '$1-$2');
+        return cnpj;
+    }
+
+    function formatCep(cep) {
+        cep = cep.replace(/\D/g, '');
+        if (cep.length > 8) cep = cep.substring(0, 8);
+        if (cep.length > 5) {
+            cep = cep.replace(/^(\d{5})(\d)/, '$1-$2');
+        }
+        return cep;
+    }
+    
+    function formatTelefone(telefone) {
+        telefone = telefone.replace(/\D/g, '');
+        if (telefone.length > 11) telefone = telefone.substring(0, 11);
+        
+        if (telefone.length === 11) { 
+            telefone = telefone.replace(/^(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+        } else if (telefone.length === 10) { 
+             telefone = telefone.replace(/^(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+        } else if (telefone.length === 9) { 
+            telefone = telefone.replace(/^(\d{5})(\d{4})/, '$1-$2');
+        } else if (telefone.length === 8) {
+             telefone = telefone.replace(/^(\d{4})(\d{4})/, '$1-$2');
+        }
+        return telefone;
+    }
+
+
+    $('#empresa_cnpj').on('input', function (e) {
+        var valor = $(this).val();
+        $(this).val(formatCnpj(valor));
+    });
+
+    $('#empresa_cep').on('input', function (e) {
+        var valor = $(this).val();
+        $(this).val(formatCep(valor));
+    });
+    
+    $('#empresa_telefone').on('input', function (e) {
+        var valor = $(this).val();
+        $(this).val(formatTelefone(valor));
+    });
+
+
+    $('#empresa_cnpj').on('blur', function() {
+        var cnpj = $(this).val().replace(/\D/g, ''); 
+        var statusCnpj = $('#cnpj_status');
+        statusCnpj.text('Consultando CNPJ...').removeClass('text-danger text-success');
+
+        if (cnpj.length === 14) {
+            $.ajax({
+                url: "{{ url_for('consultar_cnpj', cnpj='0') }}".replace('0', cnpj),
+                method: 'GET',
+                success: function(response) {
+                    if (response.error) {
+                        statusCnpj.text(response.error).addClass('text-danger');
+                    } else {
+                        statusCnpj.text('CNPJ encontrado!').addClass('text-success');
+                        $('#empresa_razao_social').val(response.razao_social || '');
+                        $('#empresa_nome_fantasia').val(response.nome_fantasia || '');
+                        $('#empresa_logradouro').val(response.logradouro || '');
+                        $('#empresa_numero').val(response.numero || '');
+                        $('#empresa_complemento').val(response.complemento || '');
+                        $('#empresa_bairro').val(response.bairro || '');
+                        $('#empresa_cep').val(formatCep(response.cep || ''));
+                        $('#empresa_municipio').val(response.municipio || '');
+                        $('#empresa_uf').val(response.uf || '');
+                        $('#empresa_telefone').val(formatTelefone(response.telefone || ''));
+                        if (!$('#empresa_email').val() && response.email) {
+                             $('#empresa_email').val(response.email);
+                        }
+                    }
+                },
+                error: function(jqXHR) {
+                    let errorMsg = "Erro ao consultar CNPJ.";
+                    if(jqXHR.responseJSON && jqXHR.responseJSON.error){
+                        errorMsg = jqXHR.responseJSON.error;
+                    }
+                    statusCnpj.text(errorMsg).addClass('text-danger');
+                }
+            });
+        } else if (cnpj.length > 0) {
+            statusCnpj.text('CNPJ inválido.').addClass('text-danger');
+        } else {
+            statusCnpj.text('');
+        }
+    });
+    
+    $('#empresaModal').on('hidden.bs.modal', function () {
+        $('#empresaForm').trigger('reset');
+        $('#edit_empresa_id').val('');
+        $('#cnpj_status').text('');
+        $('#iso_upload_section').hide();
+        $('#certificado_iso_status').text('');
+        $('#empresa_certificado_iso').val('');
+        $('#remover_certificado_iso_atual').prop('checked', false);
+        $('#certificado_iso_atual_container').hide();
+    });
+
+});
+</script>
+{% endblock %}

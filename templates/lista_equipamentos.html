@@ -1,0 +1,1286 @@
+{% extends "base.html" %}
+
+{% block title %}Lista de Equipamentos{% endblock %}
+
+{% block head_extra %}
+    <style>
+        .input-group .select2-container--bootstrap {
+            width: 1% !important; 
+        }
+         .input-group-append .btn {
+            height: calc(1.5em + .75rem + 2px); 
+        }
+        #analiseModal .modal-body, 
+        #pontoAnaliseModal .modal-body,
+        #addEquipamentoModal .modal-body,
+        #editEquipamentoModal .modal-body {
+            max-height: 75vh; 
+            overflow-y: auto;
+        }
+        /* Alinhamento específico para esta tabela, sobrescrevendo o global se necessário */
+        #tabelaEquipamentos th, #tabelaEquipamentos td {
+            text-align: center;
+            vertical-align: middle;
+        }
+        #tabelaEquipamentos td:nth-child(2), /* Nome */
+        #tabelaEquipamentos td:nth-child(3), /* TAG */
+        #tabelaEquipamentos td:nth-child(4), /* Tipo */
+        #tabelaEquipamentos td:nth-child(8), /* Localização */
+        #tabelaEquipamentos td:nth-child(9) { /* Nº Série */
+            text-align: left;
+        }
+         #tabelaEquipamentos th:nth-child(2), 
+        #tabelaEquipamentos th:nth-child(3),
+        #tabelaEquipamentos th:nth-child(4),
+        #tabelaEquipamentos th:nth-child(8),
+        #tabelaEquipamentos th:nth-child(9) {
+            text-align: left;
+        }
+        #tabelaEquipamentos th:last-child, 
+        #tabelaEquipamentos td:last-child { /* Coluna Ações */
+             width: 170px; /* Aumentado para acomodar os botões */
+             min-width: 170px;
+             text-align: center !important; /* Força centralização para a coluna de ações */
+        }
+    </style>
+{% endblock %}
+
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Lista de Equipamentos</h2>
+    <div>
+        <a href="{{ url_for('exportar_geral_excel', search=request.args.get('search', '')) }}" class="btn btn-outline-success mr-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-excel" viewBox="0 0 16 16">
+                <path d="M5.884 6.68a.5.5 0 1 0-.768.64L7.302 9.03a.5.5 0 0 0 .768-.64L5.884 6.68z"/>
+                <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2.5z"/>
+                <path d="M7.062 11.573c.495.294.952.423 1.397.423.554 0 1.03-.148 1.371-.443.34-.296.51-.703.51-1.207 0-.521-.17-.933-.51-1.233-.34-.3-.813-.449-1.367-.449-.558 0-.992.12-1.32.359-.33.238-.5.596-.5.983 0 .395.17.722.51.953zm-1.632 1.193c.253.389.631.699 1.133.927.504.228 1.097.342 1.783.342.825 0 1.539-.159 2.145-.477.608-.318.986-.753 1.139-1.303.153-.55.23-1.14.23-1.772 0-.655-.082-1.259-.247-1.81-.164-.55-.43-1.018-.797-1.404-.366-.385-.82-.69-1.361-.914a3.894 3.894 0 0 0-1.56-.343c-.74 0-1.39.134-1.941.402-.55.27-.956.634-1.217 1.093a3.287 3.287 0 0 0-.374.59c-.068.18-.102.353-.102.517 0 .228.076.437.228.628.152.19.38.284.682.284.244 0 .45-.06.617-.18s.29-.284.374-.492c.102-.254.287-.46.557-.618.27-.158.58-.237.926-.237.362 0 .682.079.96.237.277.158.485.37.624.635.138.264.207.564.207.899 0 .32-.07.6-.207.843a.993.993 0 0 1-.624.59c-.277.12-.596.18-.956.18-.445 0-.84-.075-1.18-.227a1.903 1.903 0 0 1-.785-.624l-.057-.082a.5.5 0 0 0-.736-.119l-.77.642a.5.5 0 0 0-.12.736l.057.082z"/>
+            </svg>
+            Exportar Lista
+        </a>
+        <button type="button" class="btn btn-success" data-toggle="modal" data-target="#addEquipamentoModal">
+            ➕ Adicionar Novo Equipamento
+        </button>
+    </div>
+</div>
+
+{# O formulário de pesquisa foi removido pois DataTables tem sua própria funcionalidade de pesquisa #}
+
+{% if equipamentos %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover" id="tabelaEquipamentos">
+        <thead class="thead-dark">
+            <tr>
+                <th>ID</th>
+                <th>Nome</th>
+                <th>TAG</th>
+                <th>Tipo</th>
+                <th>Próx. Cal.</th>
+                <th>Dias Venc.</th>
+                <th>Status</th>
+                <th>Localização</th>
+                <th>Nº Série</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for equip in equipamentos %}
+            <tr>
+                <td>{{ equip.id }}</td>
+                <td>{{ equip.nome }}</td>
+                <td>{{ equip.tag or 'N/A' }}</td>
+                <td>{{ equip.tipo_equipamento_nome or 'N/A' }}</td>
+                <td>{{ format_date(equip.proxima_data_calibracao) }}</td>
+                <td style="color: {{ equip.cor_vencimento if equip.cor_vencimento else 'inherit' }}; 
+                           {% if equip.cor_vencimento == '#FFFFE0' %}background-color: #FFFFE0; color: black;{% endif %}
+                           font-weight: {% if equip.cor_vencimento == '#FF0000' or equip.cor_vencimento == '#FFA500' %}bold{% else %}normal{% endif %};">
+                    {{ equip.dias_vencimento_display }}
+                </td>
+                <td style="background-color: {{ equip.cor_status_bg if equip.cor_status_bg else 'transparent' }}; 
+                           color: {{ equip.cor_status_text if equip.cor_status_text else 'inherit' }};
+                           padding: 0.25rem 0.5rem; border-radius: 0.2rem;">
+                    {{ equip.status_display }}
+                </td>
+                <td>{{ equip.localizacao or 'N/A' }}</td>
+                <td>{{ equip.numero_serie or 'N/A' }}</td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-outline-primary mb-1 btn-edit-equip" 
+                            data-toggle="modal" data-target="#editEquipamentoModal" 
+                            data-equip-id="{{ equip.id }}" title="Editar/Analisar">📝</button>
+                    <a href="{{ url_for('exportar_individual_excel', equip_id=equip.id) }}" class="btn btn-sm btn-outline-success mb-1" title="Exportar Detalhes para Excel">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-spreadsheet" viewBox="0 0 16 16">
+                            <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2.5z"/>
+                            <path d="M5 10h6a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5v-1A.5.5 0 0 1 5 10zm0-2h6a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5v-1A.5.5 0 0 1 5 8zm0-2h6a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5v-1A.5.5 0 0 1 5 6zm2-3h2a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5H7a.5.5 0 0 1-.5-.5v-1A.5.5 0 0 1 7 3z"/>
+                        </svg>
+                    </a>
+                    <form action="{{ url_for('excluir_equipamento', equip_id=equip.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Tem certeza que deseja excluir este equipamento e todo o seu histórico?');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir">🗑️</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    {% if search_query %}
+    Nenhum equipamento encontrado para "{{ search_query }}".
+    {% else %}
+    Nenhum equipamento cadastrado.
+    {% endif %}
+</div>
+{% endif %}
+
+{# --- Modal para Adicionar Novo Equipamento --- #}
+<div class="modal fade" id="addEquipamentoModal" tabindex="-1" role="dialog" aria-labelledby="addEquipamentoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('novo_equipamento') }}" id="addEquipamentoForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addEquipamentoModalLabel">Adicionar Novo Equipamento</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label for="modal_add_nome">Nome do Equipamento*</label>
+                            <input type="text" class="form-control" id="modal_add_nome" name="nome" required>
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="modal_add_tag">TAG</label>
+                            <input type="text" class="form-control" id="modal_add_tag" name="tag">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="modal_add_fabricante">Fabricante</label>
+                            <input type="text" class="form-control" id="modal_add_fabricante" name="fabricante">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label for="modal_add_modelo">Modelo</label>
+                            <input type="text" class="form-control" id="modal_add_modelo" name="modelo">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="modal_add_numero_serie">Nº Série</label>
+                            <input type="text" class="form-control" id="modal_add_numero_serie" name="numero_serie">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="modal_add_tipo_equipamento_id">Tipo de Equipamento</label>
+                            <div class="input-group">
+                                <select class="form-control select2-basic" id="modal_add_tipo_equipamento_id" name="tipo_equipamento_id" style="width: 1%;">
+                                    <option value="None">Nenhum</option>
+                                    {% for tipo in tipos_equip_para_modal %} 
+                                    <option value="{{ tipo.id }}">{{ tipo.nome_tipo }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="input-group-append">
+                                    <button type="button" class="btn btn-outline-secondary btn-add-tipo-rapido" title="Adicionar Novo Tipo" data-toggle="modal" data-target="#addTipoRapidoModal" data-parent-modal-id="addEquipamentoModal">➕</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label for="modal_add_faixa_de_uso">Faixa de Uso</label>
+                            <input type="text" class="form-control" id="modal_add_faixa_de_uso" name="faixa_de_uso">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="modal_add_status_lista">Status (Lista)</label>
+                            <select class="form-control select2-basic" id="modal_add_status_lista" name="status_lista">
+                                {% set status_options = ["Ativo","Em Calibração","Manutenção","Fora de Serviço","Calibração Vencida","Obsoleto", "Inativo"] %}
+                                {% for status_opt in status_options %}
+                                <option value="{{ status_opt }}" {% if status_opt == 'Ativo' %}selected{% endif %}>{{ status_opt }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="modal_add_localizacao">Localização</label>
+                            <input type="text" class="form-control" id="modal_add_localizacao" name="localizacao">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                         <div class="form-group col-md-4">
+                            <label for="modal_add_destino_inativo">Destino (se Inativo)</label>
+                            <input type="text" class="form-control" id="modal_add_destino_inativo" name="destino_inativo" disabled>
+                        </div>
+                        <div class="form-group col-md-8">
+                            <label for="modal_add_observacoes_equipamento">Observações Equipamento</label>
+                            <textarea class="form-control" id="modal_add_observacoes_equipamento" name="observacoes_equipamento" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Flags</label>
+                        <div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="modal_add_ativo" name="ativo" value="1" checked>
+                                <label class="form-check-label" for="modal_add_ativo">Ativo</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="modal_add_requer_calibracao" name="requer_calibracao" value="1" checked>
+                                <label class="form-check-label" for="modal_add_requer_calibracao">Requer Calibração</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="modal_add_em_calibracao" name="em_calibracao" value="1">
+                                <label class="form-check-label" for="modal_add_em_calibracao">Em Calibração</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Equipamento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# --- Modal para Editar Equipamento --- #}
+<div class="modal fade" id="editEquipamentoModal" tabindex="-1" role="dialog" aria-labelledby="editEquipamentoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <form method="POST" id="editEquipamentoForm"> 
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editEquipamentoModalLabel">Editar Equipamento</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="edit_equip_id_hidden" name="edit_equip_id_hidden_field"> 
+                    <ul class="nav nav-tabs" id="editEquipTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link active" id="dados-gerais-tab" data-toggle="tab" href="#edit-dados-gerais" role="tab" aria-controls="edit-dados-gerais" aria-selected="true">Dados Gerais</a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" id="analises-tab" data-toggle="tab" href="#edit-analises" role="tab" aria-controls="edit-analises" aria-selected="false">Análises</a>
+                        </li>
+                    </ul>
+                    <div class="tab-content" id="editEquipTabsContent">
+                        <div class="tab-pane fade show active" id="edit-dados-gerais" role="tabpanel" aria-labelledby="dados-gerais-tab">
+                            <div class="pt-3">
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="edit_nome">Nome do Equipamento*</label>
+                                        <input type="text" class="form-control" id="edit_nome" name="edit_nome" required>
+                                    </div>
+                                     <div class="form-group col-md-4">
+                                        <label for="edit_tag">TAG</label> {# Campo TAG Adicionado #}
+                                        <input type="text" class="form-control" id="edit_tag" name="edit_tag">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="edit_fabricante">Fabricante</label>
+                                        <input type="text" class="form-control" id="edit_fabricante" name="edit_fabricante">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="edit_modelo">Modelo</label>
+                                        <input type="text" class="form-control" id="edit_modelo" name="edit_modelo">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="edit_numero_serie">Nº Série</label>
+                                        <input type="text" class="form-control" id="edit_numero_serie" name="edit_numero_serie">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="edit_tipo_equipamento_id">Tipo de Equipamento</label>
+                                         <div class="input-group">
+                                            <select class="form-control select2-basic" id="edit_tipo_equipamento_id" name="edit_tipo_equipamento_id" style="width: 1%;">
+                                                <option value="None">Nenhum</option>
+                                                {# As opções serão populadas por JavaScript #}
+                                            </select>
+                                            <div class="input-group-append">
+                                                 <button type="button" class="btn btn-outline-secondary btn-add-tipo-rapido" title="Adicionar Novo Tipo" data-toggle="modal" data-target="#addTipoRapidoModal" data-parent-modal-id="editEquipamentoModal">➕</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="edit_faixa_de_uso">Faixa de Uso</label>
+                                        <input type="text" class="form-control" id="edit_faixa_de_uso" name="edit_faixa_de_uso">
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="edit_status_lista">Status (Lista)</label>
+                                        <select class="form-control select2-basic" id="edit_status_lista" name="edit_status_lista">
+                                            {% set status_options = ["Ativo","Em Calibração","Manutenção","Fora de Serviço","Calibração Vencida","Obsoleto", "Inativo"] %}
+                                            {% for status_opt in status_options %}
+                                            <option value="{{ status_opt }}">{{ status_opt }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="edit_localizacao">Localização</label>
+                                        <input type="text" class="form-control" id="edit_localizacao" name="edit_localizacao">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                     <div class="form-group col-md-4">
+                                        <label for="edit_destino_inativo">Destino (se Inativo)</label>
+                                        <input type="text" class="form-control" id="edit_destino_inativo" name="edit_destino_inativo">
+                                    </div>
+                                    <div class="form-group col-md-8">
+                                        <label for="edit_observacoes_equipamento">Observações Equipamento</label>
+                                        <textarea class="form-control" id="edit_observacoes_equipamento" name="edit_observacoes_equipamento" rows="3"></textarea>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Flags</label>
+                                    <div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="checkbox" id="edit_ativo" name="edit_ativo" value="1">
+                                            <label class="form-check-label" for="edit_ativo">Ativo</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="checkbox" id="edit_requer_calibracao" name="edit_requer_calibracao" value="1">
+                                            <label class="form-check-label" for="edit_requer_calibracao">Requer Calibração</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="checkbox" id="edit_em_calibracao" name="edit_em_calibracao" value="1">
+                                            <label class="form-check-label" for="edit_em_calibracao">Em Calibração</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="edit-analises" role="tabpanel" aria-labelledby="analises-tab">
+                            <div class="pt-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5>Histórico de Análises</h5>
+                                    <button type="button" class="btn btn-info btn-sm" id="btnNovaAnaliseModal" data-equip-id="">
+                                        ➕ Nova Análise
+                                    </button>
+                                </div>
+                                <div id="edit_historico_analises_container" class="mt-2">
+                                    <p class="text-muted">Carregando histórico...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Alterações do Equipamento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+{# --- Modal para Adicionar/Editar Análise --- #}
+<div class="modal fade" id="analiseModal" tabindex="-1" role="dialog" aria-labelledby="analiseModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document"> 
+        <div class="modal-content">
+            <form method="POST" id="analiseForm" enctype="multipart/form-data"> 
+                <div class="modal-header">
+                    <h5 class="modal-title" id="analiseModalLabel">Gerenciar Análise</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="analise_equip_id_hidden" name="analise_equip_id">
+                    <input type="hidden" id="analise_id_hidden" name="analise_id"> 
+
+                    <h4>Dados Gerais da Análise</h4>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="analise_numero_certificado">Nº Certificado*</label>
+                            <input type="text" class="form-control" id="analise_numero_certificado" name="analise_numero_certificado" required>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="analise_responsavel">Responsável pela Análise</label>
+                            <input type="text" class="form-control" id="analise_responsavel" name="analise_responsavel">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label for="analise_data_manual">Data da Análise (Manual)</label>
+                            <input type="date" class="form-control" id="analise_data_manual" name="analise_data_manual">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="analise_data_calibracao">Data Calibração (Certificado)</label>
+                            <input type="date" class="form-control" id="analise_data_calibracao" name="analise_data_calibracao">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="analise_data_prox_calibracao">Próxima Calibração (Certificado)</label>
+                            <input type="date" class="form-control" id="analise_data_prox_calibracao" name="analise_data_prox_calibracao">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="analise_resultado_geral">Resultado Geral Certificado</label>
+                        <select class="form-control" id="analise_resultado_geral" name="analise_resultado_geral">
+                            {% set res_options = ["Aprovado", "Aprovado com Restrições", "Reprovado", "N/A"] %}
+                            <option value="">Selecione...</option>
+                            {% for opt in res_options %}
+                            <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="analise_observacoes">Observações Gerais da Análise</label>
+                        <textarea class="form-control" id="analise_observacoes" name="analise_observacoes" rows="3"></textarea>
+                    </div>
+
+                    <hr>
+                    {# --- Pontos de Análise --- #}
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h4 class="mt-4">Pontos de Medição Analisados</h4>
+                        <button type="button" class="btn btn-sm btn-outline-success mt-3" id="btnAbrirModalPontoAnalise">
+                            ➕ Adicionar Ponto
+                        </button>
+                    </div>
+                    <div id="pontos_analise_lista_container" class="mb-3 mt-2">
+                        {# Lista de pontos será renderizada aqui por JS #}
+                        <p class="text-muted">Nenhum ponto adicionado a esta análise ainda.</p>
+                    </div>
+                    
+                    <hr>
+                    <h4 class="mt-4">Anexos</h4>
+                    <div id="analise_anexos_existentes_container" class="mb-2">
+                        {# Preenchido por JS #}
+                    </div>
+                    <div class="form-group mt-2">
+                        <label for="analise_anexos_upload">Adicionar Novos Anexos</label>
+                        <input type="file" class="form-control-file" id="analise_anexos_upload" name="analise_anexos" multiple>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Análise</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# --- Modal para Adicionar/Editar Ponto de Análise --- #}
+<div class="modal fade" id="pontoAnaliseModal" tabindex="-1" role="dialog" aria-labelledby="pontoAnaliseModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <form id="pontoAnaliseForm"> 
+                <div class="modal-header">
+                    <h5 class="modal-title" id="pontoAnaliseModalLabel">Adicionar/Editar Ponto de Análise</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="ponto_analise_temp_id"> 
+                    <input type="hidden" id="ponto_analise_db_id"> 
+
+                    <div class="form-group">
+                        <label for="ponto_unidade_predefinida">Unidade Predefinida (do Tipo de Equipamento)</label>
+                        <select class="form-control" id="ponto_unidade_predefinida">
+                            <option value="">Selecione ou digite manualmente abaixo...</option>
+                            {# Populado por JS #}
+                        </select>
+                    </div>
+                    <div id="ponto_lista_unidades_tipo" class="mb-2 small text-muted">
+                        {# Lista de unidades do tipo será mostrada aqui por JS #}
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-8">
+                            <label for="ponto_nome">Nome Ponto/Unidade*</label>
+                            <input type="text" class="form-control" id="ponto_nome" name="ponto_nome" required>
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label for="ponto_simbolo">Símbolo</label>
+                            <input type="text" class="form-control" id="ponto_simbolo" name="ponto_simbolo">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-6"> 
+                            <label for="ponto_amplitude_a">Amplitude A</label>
+                            <input type="number" step="any" class="form-control" id="ponto_amplitude_a" name="ponto_amplitude_a">
+                        </div>
+                        <div class="form-group col-md-6"> 
+                            <label for="ponto_desvio_b">Desvio B</label>
+                            <input type="number" step="any" class="form-control" id="ponto_desvio_b" name="ponto_desvio_b">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="ponto_regra_aplicada">Regra Aplicada</label>
+                        <select class="form-control" id="ponto_regra_aplicada" name="ponto_regra_aplicada">
+                            {% for regra in REGRAS_VALIDACAO_CRITERIOS %} 
+                            <option value="{{ regra }}">{{ regra }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Resultado do Ponto: <span id="ponto_resultado_display" class="font-weight-bold">N/A</span></label>
+                        <button type="button" class="btn btn-sm btn-info ml-2" id="btnCalcularResultadoPonto">Calcular Resultado</button>
+                    </div>
+                    <div class="form-group">
+                        <label for="ponto_observacoes">Observações do Ponto</label>
+                        <textarea class="form-control" id="ponto_observacoes" name="ponto_observacoes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="btnSalvarPontoAnalise">Salvar Ponto na Análise</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addTipoRapidoModal" tabindex="-1" role="dialog" aria-labelledby="addTipoRapidoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <form id="addTipoRapidoForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addTipoRapidoModalLabel">Adicionar Novo Tipo de Equipamento</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="novo_tipo_nome_rapido">Nome do Novo Tipo*</label>
+                        <input type="text" class="form-control" id="novo_tipo_nome_rapido" name="novo_tipo_nome_rapido" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="btnSalvarTipoRapido">Salvar Tipo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    // Script para modal de Adicionar Equipamento
+    const modalAddAtivoCheckbox = document.getElementById('modal_add_ativo');
+    const modalAddDestinoInativoInput = document.getElementById('modal_add_destino_inativo');
+
+    function toggleModalAddDestinoInativo() {
+        if (modalAddAtivoCheckbox && modalAddDestinoInativoInput) {
+            modalAddDestinoInativoInput.disabled = modalAddAtivoCheckbox.checked;
+            if (modalAddAtivoCheckbox.checked) {
+                modalAddDestinoInativoInput.value = '';
+            }
+        }
+    }
+    if (modalAddAtivoCheckbox) {
+        modalAddAtivoCheckbox.addEventListener('change', toggleModalAddDestinoInativo);
+    }
+    
+    // Script para modal de Editar Equipamento
+    const modalEditAtivoCheckbox = document.getElementById('edit_ativo');
+    const modalEditDestinoInativoInput = document.getElementById('edit_destino_inativo');
+
+    function toggleModalEditDestinoInativo() {
+        if (modalEditAtivoCheckbox && modalEditDestinoInativoInput) {
+            modalEditDestinoInativoInput.disabled = modalEditAtivoCheckbox.checked;
+            if (modalEditAtivoCheckbox.checked) {
+                modalEditDestinoInativoInput.value = '';
+            }
+        }
+    }
+     if (modalEditAtivoCheckbox) {
+        modalEditAtivoCheckbox.addEventListener('change', toggleModalEditDestinoInativo);
+    }
+
+    let currentAnalisePontos = [];
+    let currentAnaliseUnidadesMedida = []; 
+    let isCurrentAnaliseEditable = true; 
+    let currentEditingEquipId = null; 
+    let parentEquipModalId = null; 
+
+    function formatDateForDisplayJS(isoDateString) { 
+        if (!isoDateString) return 'N/A';
+        try {
+            const date = new Date(isoDateString + 'T00:00:00Z'); 
+            if (isNaN(date.getTime())) return isoDateString; 
+            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+        } catch (e) {
+            console.warn("Erro ao formatar data no JS:", isoDateString, e);
+            return isoDateString;
+        }
+    }
+
+
+    $(document).ready(function() { 
+        $('#tabelaEquipamentos').DataTable({
+            "language": {
+                "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json",
+                "lengthMenu": "Mostrar _MENU_ registros por página",
+                "zeroRecords": "Nenhum equipamento encontrado",
+                "info": "Mostrando página _PAGE_ de _PAGES_",
+                "infoEmpty": "Nenhum registro disponível",
+                "infoFiltered": "(filtrado de _MAX_ registros totais)",
+                "search": "Pesquisar:",
+                "paginate": {
+                    "first":      "Primeiro",
+                    "last":       "Último",
+                    "next":       "Próximo",
+                    "previous":   "Anterior"
+                }
+            },
+            "lengthMenu": [[5, 10, 25, 50, -1], [5, 10, 25, 50, "Todos"]],
+            "pageLength": 10, 
+            "responsive": true,
+             "columnDefs": [
+                { "orderable": false, "targets": -1 } 
+            ]
+        });
+
+
+        function initializeSelect2(modalElement, selectElement, placeholderText) {
+            selectElement.select2({
+                theme: 'bootstrap',
+                placeholder: placeholderText,
+                allowClear: true,
+                dropdownParent: modalElement.find('.modal-content') 
+            });
+        }
+
+        $('#addEquipamentoModal').on('shown.bs.modal', function () {
+            initializeSelect2($(this), $('#modal_add_tipo_equipamento_id'), 'Selecione um tipo');
+            initializeSelect2($(this), $('#modal_add_status_lista'), 'Selecione um status');
+        });
+        $('#editEquipamentoModal').on('shown.bs.modal', function () {
+            initializeSelect2($(this), $('#edit_tipo_equipamento_id'), 'Selecione um tipo');
+            initializeSelect2($(this), $('#edit_status_lista'), 'Selecione um status');
+        });
+        
+        $('#addEquipamentoModal').on('hidden.bs.modal', function () {
+            $(this).find('form')[0].reset(); 
+            if ($('#modal_add_tipo_equipamento_id').data('select2')) {
+                $('#modal_add_tipo_equipamento_id').val(null).trigger('change'); 
+            }
+            if ($('#modal_add_status_lista').data('select2')) {
+                $('#modal_add_status_lista').val('Ativo').trigger('change'); 
+            }
+            if (modalAddAtivoCheckbox) modalAddAtivoCheckbox.checked = true; 
+            if (document.getElementById('modal_add_requer_calibracao')) document.getElementById('modal_add_requer_calibracao').checked = true;
+            toggleModalAddDestinoInativo(); 
+        });
+
+        $('#editEquipamentoModal').on('show.bs.modal', function (event) {
+            var button = $(event.relatedTarget); 
+            var equipId = button.data('equip-id');
+            currentEditingEquipId = equipId; 
+            var modal = $(this);
+            var form = modal.find('#editEquipamentoForm');
+
+            modal.find('.modal-title').text('Editar Equipamento ID: ' + equipId);
+            form.attr('action', "{{ url_for('editar_equipamento', equip_id=0) }}".replace('0', equipId));
+            
+            form.trigger('reset');
+            if ($('#edit_tipo_equipamento_id').data('select2')) {
+                $('#edit_tipo_equipamento_id').val(null).trigger('change');    
+            }
+            if ($('#edit_status_lista').data('select2')) {
+                 $('#edit_status_lista').val(null).trigger('change'); 
+            }
+
+            $('#edit_historico_analises_container').html('<p class="text-muted">Carregando histórico...</p>');
+            $('#btnNovaAnaliseModal').data('equip-id', equipId); 
+
+            $.ajax({
+                url: "{{ url_for('equipamento_json', equip_id=0) }}".replace('0', equipId),
+                method: 'GET',
+                success: function(response) {
+                    if (response.equipamento) {
+                        var equip = response.equipamento;
+                        modal.find('#edit_equip_id_hidden').val(equip.id);
+                        modal.find('#edit_nome').val(equip.nome || '');
+                        modal.find('#edit_tag').val(equip.tag || ''); 
+                        modal.find('#edit_fabricante').val(equip.fabricante || '');
+                        modal.find('#edit_modelo').val(equip.modelo || '');
+                        modal.find('#edit_numero_serie').val(equip.numero_serie || '');
+                        
+                        var tiposSelectEdit = modal.find('#edit_tipo_equipamento_id');
+                        tiposSelectEdit.empty().append($('<option>', { value: 'None', text: 'Nenhum' }));
+                        if (response.tipos_equipamento && response.tipos_equipamento.length > 0) {
+                            response.tipos_equipamento.forEach(function(tipo) {
+                                tiposSelectEdit.append($('<option>', {
+                                    value: tipo.id,
+                                    text: tipo.nome_tipo
+                                }));
+                            });
+                        }
+                        tiposSelectEdit.val(equip.tipo_equipamento_id !== null ? String(equip.tipo_equipamento_id) : 'None').trigger('change');
+
+                        modal.find('#edit_faixa_de_uso').val(equip.faixa_de_uso || '');
+                        modal.find('#edit_status_lista').val(equip.status || 'Ativo').trigger('change');
+                        modal.find('#edit_localizacao').val(equip.localizacao || '');
+                        modal.find('#edit_observacoes_equipamento').val(equip.observacoes_equipamento || '');
+                        modal.find('#edit_ativo').prop('checked', equip.ativo == 1);
+                        modal.find('#edit_requer_calibracao').prop('checked', equip.requer_calibracao == 1);
+                        modal.find('#edit_em_calibracao').prop('checked', equip.em_calibracao == 1);
+                        modal.find('#edit_destino_inativo').val(equip.destino_inativo || '');
+                        toggleModalEditDestinoInativo(); 
+
+                        currentAnaliseUnidadesMedida = response.equipamento.unidades_medida_tipo || []; 
+                        $('#btnNovaAnaliseModal').data('unidades-tipo', JSON.stringify(currentAnaliseUnidadesMedida));
+                        renderHistoricoAnalises(equip.historico_analises, equip.id, response.equipamento.unidades_medida_tipo);
+                    } else {
+                         $('#edit_historico_analises_container').html('<p class="text-danger">Erro ao carregar dados do equipamento (resposta sem equipamento).</p>');
+                    }
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    $('#edit_historico_analises_container').html('<p class="text-danger">Erro na requisição AJAX para carregar dados do equipamento. Verifique o console.</p>');
+                }
+            });
+        });
+        
+        function renderHistoricoAnalises(historico_analises, equipId, unidades_medida_tipo_equip) {
+            var historicoContainer = $('#edit_historico_analises_container');
+            historicoContainer.empty(); 
+            var historicoHtml = '';
+            if (historico_analises && historico_analises.length > 0) {
+                historicoHtml += '<div class="accordion" id="accordionAnalises">';
+                historico_analises.forEach(function(analise, index) {
+                    var dataExibir = analise.data_analise_manual_fmt || analise.data_calibracao_analisada_fmt || 'N/A';
+                    var btnText = analise.is_latest ? 'Editar Análise' : 'Visualizar Análise';
+                    var btnClass = analise.is_latest ? 'btn-outline-secondary' : 'btn-outline-info';
+                    var collapseId = `collapseAnalise${analise.id}`;
+                    var headerId = `headerAnalise${analise.id}`;
+
+                    historicoHtml += `
+                        <div class="card">
+                            <div class="card-header" id="${headerId}">
+                                <h2 class="mb-0 d-flex justify-content-between align-items-center">
+                                    <button class="btn btn-link btn-block text-left collapsed" type="button" data-toggle="collapse" data-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+                                        Cert.: ${analise.numero_certificado_analisado || 'N/A'} | Data: ${dataExibir} | Res.: ${analise.resultado_geral_certificado || 'N/A'}
+                                    </button>
+                                    <small class="text-primary mr-2" style="font-size: 0.8em;">Anexos: ${analise.anexos_count || 0} | Pontos: ${analise.pontos_count || 0}</small>
+                                </h2>
+                            </div>
+                            <div id="${collapseId}" class="collapse" aria-labelledby="${headerId}" data-parent="#accordionAnalises">
+                                <div class="card-body">
+                                    <p><strong>Responsável:</strong> ${analise.responsavel_analise || 'N/A'}</p>
+                                    <p><strong>Data Cal. (Cert.):</strong> ${analise.data_calibracao_analisada_fmt}</p>
+                                    <p><strong>Próx. Cal. (Cert.):</strong> ${analise.data_prox_calibracao_analisada_fmt}</p>
+                                    <p><strong>Observações da Análise:</strong> ${analise.observacoes_analise || 'N/A'}</p>
+                                    <p><strong>Anexos:</strong></p>
+                                    <ul>`;
+                    if (analise.anexos && analise.anexos.length > 0) {
+                        analise.anexos.forEach(function(ax) {
+                            historicoHtml += `<li><a href="{{ url_for('servir_anexo', subpath='') }}${ax.caminho_relativo_armazenado.replace(/\\/g, '/')}" target="_blank">${ax.nome_arquivo_original}</a></li>`;
+                        });
+                    } else {
+                        historicoHtml += `<li>Nenhum anexo.</li>`;
+                    }
+                    historicoHtml += `</ul>
+                                    <div class="mt-2">
+                                        <button type="button" class="btn btn-sm ${btnClass} btnEditarVisualizarAnalise" 
+                                                data-analise-id="${analise.id}" data-equip-id="${equipId}"
+                                                data-is-latest="${analise.is_latest}"
+                                                data-unidades-tipo='${JSON.stringify(unidades_medida_tipo_equip || [])}'>${btnText}</button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger ml-1 btnExcluirAnalise" data-analise-id="${analise.id}" data-equip-id="${equipId}">🗑️ Excluir</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                historicoHtml += '</div>'; 
+            } else {
+                historicoHtml = '<p class="text-muted">Nenhuma análise registrada.</p>';
+            }
+            historicoContainer.html(historicoHtml);
+        }
+
+
+        $(document).on('click', '#btnNovaAnaliseModal, .btnEditarVisualizarAnalise', function() {
+            var equipId = $(this).data('equip-id');
+            var analiseId = $(this).data('analise-id'); 
+            isCurrentAnaliseEditable = $(this).data('is-latest') !== false; 
+
+            var analiseModal = $('#analiseModal');
+            var analiseForm = analiseModal.find('#analiseForm');
+            
+            var unidadesDataAttrString = $(this).data('unidades-tipo');
+            if (typeof unidadesDataAttrString === 'string') {
+                try { currentAnaliseUnidadesMedida = JSON.parse(unidadesDataAttrString); } catch(e) { console.error("Erro ao parsear unidades-tipo do botão:", e); currentAnaliseUnidadesMedida = [];}
+            } else if (typeof unidadesDataAttrString === 'object') { 
+                 currentAnaliseUnidadesMedida = unidadesDataAttrString;
+            } else { 
+                var equipDataFromParentModal = $('#btnNovaAnaliseModal').data('unidades-tipo');
+                 if (typeof equipDataFromParentModal === 'string') {
+                    try { currentAnaliseUnidadesMedida = JSON.parse(equipDataFromParentModal); } catch(e) {console.error("Erro ao parsear unidades-tipo do botão pai:", e); currentAnaliseUnidadesMedida = [];}
+                 } else if (typeof equipDataFromParentModal === 'object') {
+                    currentAnaliseUnidadesMedida = equipDataFromParentModal;
+                 } else {
+                    currentAnaliseUnidadesMedida = []; 
+                 }
+            }
+
+            currentAnalisePontos = []; 
+            renderPontosAnaliseList(); 
+
+            analiseForm.trigger('reset');
+            $('#analise_anexos_existentes_container').html('');
+            analiseModal.find('#analise_equip_id_hidden').val(equipId);
+            
+            setupAnaliseModalViewMode(isCurrentAnaliseEditable);
+
+
+            if (analiseId) { 
+                analiseModal.find('.modal-title').text( (isCurrentAnaliseEditable ? 'Editar' : 'Visualizar') + ' Análise ID: ' + analiseId);
+                analiseForm.attr('action', "{{ url_for('editar_analise', analise_id=0) }}".replace('0', analiseId));
+                analiseModal.find('#analise_id_hidden').val(analiseId);
+
+                $.ajax({
+                    url: "{{ url_for('get_analise_json', analise_id=0) }}".replace('0', analiseId),
+                    method: 'GET',
+                    success: function(response) {
+                        if (response.analise) {
+                            var an = response.analise;
+                            isCurrentAnaliseEditable = an.is_latest; 
+                            setupAnaliseModalViewMode(isCurrentAnaliseEditable); 
+
+                            analiseModal.find('#analise_numero_certificado').val(an.numero_certificado_analisado || '');
+                            analiseModal.find('#analise_responsavel').val(an.responsavel_analise || '');
+                            analiseModal.find('#analise_data_manual').val(an.data_analise_manual || ''); 
+                            analiseModal.find('#analise_data_calibracao').val(an.data_calibracao_analisada || '');
+                            analiseModal.find('#analise_data_prox_calibracao').val(an.data_prox_calibracao_analisada || '');
+                            analiseModal.find('#analise_resultado_geral').val(an.resultado_geral_certificado || '');
+                            analiseModal.find('#analise_observacoes').val(an.observacoes_analise || '');
+
+                            var anexosHtml = '';
+                            if (an.anexos && an.anexos.length > 0) {
+                                anexosHtml += '<p>Anexos Existentes' + (isCurrentAnaliseEditable ? ' (marque para excluir):' : ':') + '</p><ul class="list-group mb-2">';
+                                an.anexos.forEach(function(ax) {
+                                    anexosHtml += `
+                                        <li class="list-group-item">
+                                            ${isCurrentAnaliseEditable ? `<input type="checkbox" name="excluir_anexo_ids" value="${ax.id}" id="excluir_anexo_modal_${ax.id}" class="mr-2">` : ''}
+                                            <label for="excluir_anexo_modal_${ax.id}" class="${isCurrentAnaliseEditable ? '' : 'ml-0'}">
+                                                <a href="{{ url_for('servir_anexo', subpath='') }}${ax.caminho_relativo_armazenado.replace(/\\/g, '/')}" target="_blank">${ax.nome_arquivo_original}</a>
+                                            </label>
+                                        </li>`;
+                                });
+                                anexosHtml += '</ul>';
+                            }
+                            $('#analise_anexos_existentes_container').html(anexosHtml);
+                            
+                            currentAnalisePontos = []; 
+                            if (an.pontos_analisados && an.pontos_analisados.length > 0) {
+                                an.pontos_analisados.forEach(function(p_db) {
+                                    currentAnalisePontos.push({
+                                        id_ponto_db: p_db.id, 
+                                        nome_ponto: p_db.nome_ponto,
+                                        simbolo_ponto: p_db.simbolo_ponto,
+                                        amplitude_A_ponto: p_db.amplitude_A_ponto,
+                                        desvio_B_ponto: p_db.desvio_B_ponto,
+                                        regra_aplicada_ponto: p_db.regra_aplicada_ponto,
+                                        resultado_ponto: p_db.resultado_ponto,
+                                        observacoes_ponto: p_db.observacoes_ponto,
+                                        temp_id: 'db_ponto_' + p_db.id 
+                                    });
+                                });
+                            }
+                            renderPontosAnaliseList();
+                            currentAnaliseUnidadesMedida = an.unidades_medida_tipo || []; 
+                        } else {
+                             $('#analise_anexos_existentes_container').html('<p class="text-danger">Erro ao carregar dados da análise (resposta sem análise).</p>');
+                        }
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) { 
+                        $('#analise_anexos_existentes_container').html('<p class="text-danger">Erro na requisição AJAX para carregar dados da análise. Verifique o console.</p>');
+                    }
+                });
+            } else { 
+                analiseModal.find('.modal-title').text('Nova Análise para Equipamento ID: ' + equipId);
+                analiseForm.attr('action', "{{ url_for('nova_analise', equip_id=0) }}".replace('0', equipId));
+                analiseModal.find('#analise_id_hidden').val('');
+                isCurrentAnaliseEditable = true; 
+                setupAnaliseModalViewMode(true);
+            }
+            analiseModal.modal('show'); 
+        });
+
+        function setupAnaliseModalViewMode(isEditable) {
+            var analiseModal = $('#analiseModal');
+            analiseModal.find('#analise_numero_certificado, #analise_responsavel, #analise_data_manual, #analise_data_calibracao, #analise_data_prox_calibracao, #analise_resultado_geral, #analise_observacoes, #analise_anexos_upload').prop('disabled', !isEditable);
+            analiseModal.find('#analise_anexos_existentes_container input[type="checkbox"]').prop('disabled', !isEditable);
+            analiseModal.find('button[type="submit"]').toggle(isEditable);
+            analiseModal.find('#btnAbrirModalPontoAnalise').toggle(isEditable);
+            
+             if (!isEditable) {
+                analiseModal.find('button[type="submit"]').hide();
+            } else {
+                analiseModal.find('button[type="submit"]').show().text('Salvar Análise');
+            }
+        }
+
+
+        $('#analiseModal').on('hidden.bs.modal', function () {
+            $(this).find('form')[0].reset();
+            $('#analise_anexos_existentes_container').html('');
+            currentAnalisePontos = [];
+            renderPontosAnaliseList();
+            currentAnaliseUnidadesMedida = []; 
+            if ($('#editEquipamentoModal').hasClass('show')) {
+                $('body').addClass('modal-open'); 
+            }
+        });
+
+        $('#pontoAnaliseModal').on('hidden.bs.modal', function () {
+            if ($('#analiseModal').hasClass('show')) {
+                $('body').addClass('modal-open'); 
+            }
+            $('#pontoAnaliseForm').trigger('reset');
+            $('#ponto_analise_temp_id').val(''); 
+            $('#ponto_analise_db_id').val(''); 
+            $('#ponto_resultado_display').text('N/A').removeClass('text-success text-danger text-warning').css('color', 'inherit');
+            $('#ponto_lista_unidades_tipo').html('');
+            $('#ponto_unidade_predefinida').empty().append($('<option>', { value: '', text: 'Selecione ou digite manualmente...' }));
+        });
+
+        $(document).on('click', '#btnAbrirModalPontoAnalise', function() {
+            if (!isCurrentAnaliseEditable) {
+                console.log("Tentativa de abrir modal de ponto, mas análise não é editável.");
+                return; 
+            }
+
+            $('#pontoAnaliseForm').trigger('reset');
+            $('#ponto_analise_temp_id').val(''); 
+            $('#ponto_analise_db_id').val(''); 
+            $('#ponto_resultado_display').text('N/A').removeClass('text-success text-danger text-warning').css('color', 'inherit');
+            
+            var selectUnidades = $('#ponto_unidade_predefinida');
+            selectUnidades.empty().append($('<option>', { value: '', text: 'Selecione ou digite manualmente...' }));
+            var listaUnidadesHtml = 'Unidades do Tipo: ';
+            if (currentAnaliseUnidadesMedida && currentAnaliseUnidadesMedida.length > 0) {
+                currentAnaliseUnidadesMedida.forEach(function(unidade) {
+                    selectUnidades.append($('<option>', {
+                        value: unidade.nome_unidade,
+                        text: `${unidade.nome_unidade} (${unidade.simbolo_unidade || ''})`,
+                        'data-simbolo': unidade.simbolo_unidade || ''
+                    }));
+                    listaUnidadesHtml += `<span class="badge badge-info mr-1">${unidade.nome_unidade} (${unidade.simbolo_unidade || ''})</span> `;
+                });
+            } else {
+                listaUnidadesHtml += '<em>Nenhuma unidade cadastrada para este tipo.</em>';
+            }
+            $('#ponto_lista_unidades_tipo').html(listaUnidadesHtml);
+            $('#pontoAnaliseModalLabel').text('Adicionar Ponto de Análise');
+            $('#pontoAnaliseForm input, #pontoAnaliseForm select, #pontoAnaliseForm textarea').prop('disabled', false);
+            $('#btnCalcularResultadoPonto').show();
+            $('#btnSalvarPontoAnalise').show();
+            $('#pontoAnaliseModal').modal('show'); 
+        });
+
+
+        $('#ponto_unidade_predefinida').on('change', function() {
+            var selectedOption = $(this).find('option:selected');
+            var nomeUnidade = selectedOption.val();
+            var simboloUnidade = selectedOption.data('simbolo');
+            if (nomeUnidade) {
+                $('#ponto_nome').val(nomeUnidade);
+                $('#ponto_simbolo').val(simboloUnidade || '');
+            }
+        });
+
+        $('#btnCalcularResultadoPonto').on('click', function() {
+            var a_val = parseFloat($('#ponto_amplitude_a').val());
+            var b_val = parseFloat($('#ponto_desvio_b').val());
+            var regra = $('#ponto_regra_aplicada').val();
+            var resultado = 'N/A';
+            var cor = 'inherit';
+
+            if (isNaN(a_val) || isNaN(b_val)) {
+                if (regra !== "Nenhuma") { 
+                    resultado = 'Valores A/B Inválidos';
+                    cor = 'orange';
+                }
+            } else {
+                var atendido = false;
+                try {
+                    if (regra === "B*3 < A") atendido = (b_val * 3) < a_val;
+                    else if (regra === "B*2 < A") atendido = (b_val * 2) < a_val;
+                    else if (regra === "B < A") atendido = b_val < a_val;
+                    else if (regra === "A/3 > B") atendido = (a_val / 3) > b_val;
+                    else if (regra === "A/2 > B") atendido = (a_val / 2) > b_val;
+                    else if (regra === "A > B") atendido = a_val > b_val;
+                    else if (regra === "Nenhuma") resultado = 'N/A (Nenhuma Regra)';
+                } catch (e) {
+                    resultado = 'Erro Cálculo'; cor = 'orange';
+                }
+                if (regra !== "Nenhuma" && resultado === 'N/A') { 
+                    resultado = atendido ? 'Aprovado' : 'Reprovado';
+                    cor = atendido ? 'green' : 'red';
+                }
+            }
+            $('#ponto_resultado_display').text(resultado).css('color', cor);
+        });
+
+        $('#btnSalvarPontoAnalise').on('click', function() {
+            if (!isCurrentAnaliseEditable) {
+                alert("Esta análise não pode ser modificada.");
+                $('#pontoAnaliseModal').modal('hide');
+                return;
+            }
+            var pontoData = {
+                id_ponto_db: $('#ponto_analise_db_id').val() || null, 
+                nome_ponto: $('#ponto_nome').val(),
+                simbolo_ponto: $('#ponto_simbolo').val(),
+                amplitude_A_ponto: $('#ponto_amplitude_a').val() ? parseFloat($('#ponto_amplitude_a').val()) : null,
+                desvio_B_ponto: $('#ponto_desvio_b').val() ? parseFloat($('#ponto_desvio_b').val()) : null,
+                regra_aplicada_ponto: $('#ponto_regra_aplicada').val(),
+                resultado_ponto: $('#ponto_resultado_display').text(),
+                observacoes_ponto: $('#ponto_observacoes').val(),
+                temp_id: $('#ponto_analise_temp_id').val() || ('new_ponto_' + Date.now()) 
+            };
+
+            if (!pontoData.nome_ponto) {
+                alert('O nome do ponto é obrigatório.');
+                return;
+            }
+            
+            var existingTempId = $('#ponto_analise_temp_id').val();
+            if (existingTempId) { 
+                var index = currentAnalisePontos.findIndex(p => p.temp_id === existingTempId);
+                if (index > -1) {
+                    currentAnalisePontos[index] = pontoData;
+                } else { 
+                     currentAnalisePontos.push(pontoData); 
+                }
+            } else { 
+                currentAnalisePontos.push(pontoData);
+            }
+            
+            renderPontosAnaliseList();
+            $('#pontoAnaliseModal').modal('hide');
+        });
+
+        function renderPontosAnaliseList() {
+            var container = $('#pontos_analise_lista_container');
+            container.empty();
+            if (currentAnalisePontos.length === 0) {
+                container.html('<p class="text-muted">Nenhum ponto adicionado a esta análise ainda.</p>');
+                return;
+            }
+            var listHtml = '<ul class="list-group">';
+            currentAnalisePontos.forEach(function(ponto, index) {
+                listHtml += `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>${ponto.nome_ponto} (${ponto.simbolo_ponto || ''}) - Res: ${ponto.resultado_ponto}</span>
+                        <div>`;
+                if(isCurrentAnaliseEditable) { 
+                    listHtml += `<button type="button" class="btn btn-sm btn-outline-secondary btn-edit-ponto-temp mr-1" data-temp-id="${ponto.temp_id}">Editar</button>
+                                 <button type="button" class="btn btn-sm btn-outline-danger btn-delete-ponto-temp" data-temp-id="${ponto.temp_id}">Excluir</button>`;
+                } else {
+                    listHtml += `<button type="button" class="btn btn-sm btn-outline-info btn-view-ponto-temp" data-temp-id="${ponto.temp_id}">Visualizar Ponto</button>`;
+                }
+                listHtml += `</div>
+                    </li>`;
+            });
+            listHtml += '</ul>';
+            container.html(listHtml);
+        }
+
+        $(document).on('click', '.btn-edit-ponto-temp, .btn-view-ponto-temp', function() {
+            var tempId = $(this).data('temp-id');
+            var isViewOnlyButton = $(this).hasClass('btn-view-ponto-temp'); 
+            var openInViewMode = isViewOnlyButton || !isCurrentAnaliseEditable; 
+            
+            var ponto = currentAnalisePontos.find(p => p.temp_id === tempId);
+
+            if (ponto) {
+                $('#pontoAnaliseForm').trigger('reset'); 
+                $('#ponto_analise_temp_id').val(ponto.temp_id); 
+                $('#ponto_analise_db_id').val(ponto.id_ponto_db || ''); 
+                $('#ponto_nome').val(ponto.nome_ponto || '');
+                $('#ponto_simbolo').val(ponto.simbolo_ponto || '');
+                $('#ponto_amplitude_a').val(ponto.amplitude_A_ponto !== null ? ponto.amplitude_A_ponto : '');
+                $('#ponto_desvio_b').val(ponto.desvio_B_ponto !== null ? ponto.desvio_B_ponto : '');
+                $('#ponto_regra_aplicada').val(ponto.regra_aplicada_ponto || 'Nenhuma');
+                $('#ponto_resultado_display').text(ponto.resultado_ponto || 'N/A').css('color', ponto.resultado_ponto === 'Aprovado' ? 'green' : (ponto.resultado_ponto === 'Reprovado' ? 'red' : 'inherit'));
+                $('#ponto_observacoes').val(ponto.observacoes_ponto || '');
+                
+                var selectUnidades = $('#ponto_unidade_predefinida');
+                selectUnidades.empty().append($('<option>', { value: '', text: 'Selecione ou digite manualmente...' }));
+                var listaUnidadesHtml = 'Unidades do Tipo: ';
+                if (currentAnaliseUnidadesMedida && currentAnaliseUnidadesMedida.length > 0) {
+                    currentAnaliseUnidadesMedida.forEach(function(unidade) {
+                        selectUnidades.append($('<option>', {
+                            value: unidade.nome_unidade,
+                            text: `${unidade.nome_unidade} (${unidade.simbolo_unidade || ''})`,
+                            'data-simbolo': unidade.simbolo_unidade || ''
+                        }));
+                        listaUnidadesHtml += `<span class="badge badge-info mr-1">${unidade.nome_unidade} (${unidade.simbolo_unidade || ''})</span> `;
+                    });
+                } else {
+                    listaUnidadesHtml += '<em>Nenhuma unidade cadastrada para este tipo.</em>';
+                }
+                $('#ponto_lista_unidades_tipo').html(listaUnidadesHtml);
+                
+                if (currentAnaliseUnidadesMedida && currentAnaliseUnidadesMedida.some(u => u.nome_unidade === ponto.nome_ponto)) {
+                     selectUnidades.val(ponto.nome_ponto);
+                }
+
+                if (openInViewMode) {
+                    $('#pontoAnaliseModalLabel').text('Visualizar Ponto de Análise');
+                    $('#pontoAnaliseForm input, #pontoAnaliseForm select, #pontoAnaliseForm textarea').prop('disabled', true);
+                    $('#btnCalcularResultadoPonto').hide();
+                    $('#btnSalvarPontoAnalise').hide();
+                } else {
+                    $('#pontoAnaliseModalLabel').text('Editar Ponto de Análise');
+                    $('#pontoAnaliseForm input, #pontoAnaliseForm select, #pontoAnaliseForm textarea').prop('disabled', false);
+                    $('#btnCalcularResultadoPonto').show();
+                    $('#btnSalvarPontoAnalise').show();
+                }
+                $('#pontoAnaliseModal').modal('show');
+            } else {
+                console.error("Ponto não encontrado na lista temporária para temp_id:", tempId);
+                alert("Erro: Ponto não encontrado. Verifique o console.");
+            }
+        });
+
+
+        $(document).on('click', '.btn-delete-ponto-temp', function() {
+            if (!isCurrentAnaliseEditable) return; 
+
+            var tempId = $(this).data('temp-id');
+            if (confirm('Tem certeza que deseja remover este ponto da análise atual?')) {
+                currentAnalisePontos = currentAnalisePontos.filter(p => p.temp_id !== tempId);
+                renderPontosAnaliseList();
+            }
+        });
+
+        $('#analiseForm').on('submit', function(e) {
+            e.preventDefault(); 
+            var form = $(this);
+            var formData = new FormData(this); 
+
+            formData.append('analise_pontos_json_data', JSON.stringify(currentAnalisePontos));
+            
+            $.ajax({
+                url: form.attr('action'),
+                method: 'POST',
+                data: formData,
+                processData: false, 
+                contentType: false, 
+                success: function(response) {
+                    if (response.success) {
+                        $('#analiseModal').modal('hide');
+                        window.location.reload(); 
+                    } else {
+                        showToast("Erro ao Salvar Análise", response.message || "Erro desconhecido.", false);
+                    }
+                },
+                error: function() {
+                    showToast("Erro de Comunicação", "Não foi possível salvar a análise.", false);
+                }
+            });
+        });
+
+        $(document).on('click', '.btnExcluirAnalise', function(e) {
+            e.preventDefault(); 
+            var button = $(this); 
+            var analiseId = button.data('analise-id');
+            var equipId = button.data('equip-id'); 
+
+            if (confirm('Tem certeza que deseja excluir esta análise e todos os seus dados? Esta ação não pode ser desfeita.')) {
+                $.ajax({
+                    url: "{{ url_for('excluir_analise') }}", 
+                    method: 'POST',
+                    data: { 
+                        analise_id: analiseId, 
+                        equip_id_redirect: equipId 
+                    }, 
+                    success: function(response) {
+                        if (response.success) {
+                            if (response.historico_analises && response.equip_id == currentEditingEquipId) {
+                                renderHistoricoAnalises(response.historico_analises, response.equip_id, currentAnaliseUnidadesMedida);
+                                showToast("Sucesso", response.message || "Análise excluída com sucesso!", true);
+                                if ($('#editEquipamentoModal').hasClass('show')) {
+                                     $('body').addClass('modal-open'); 
+                                }
+                            } else {
+                                window.location.reload(); 
+                            }
+                        } else {
+                            showToast("Erro ao Excluir", response.message, false);
+                        }
+                    },
+                    error: function() {
+                        showToast("Erro de Comunicação", "Não foi possível excluir a análise.", false);
+                    }
+                });
+            }
+        });
+
+        // --- Lógica para o modal de adicionar tipo rapidamente ---
+        $(document).on('click', '.btn-add-tipo-rapido', function() {
+            parentEquipModalId = $(this).data('parent-modal-id'); 
+            if (parentEquipModalId) {
+                $('#' + parentEquipModalId).modal('hide'); 
+            }
+            $('#addTipoRapidoModal').modal('show');
+            $('#addTipoRapidoModal').on('shown.bs.modal', function() {
+                $('#novo_tipo_nome_rapido').focus(); 
+            });
+        });
+
+        $('#btnSalvarTipoRapido').on('click', function() {
+            var nomeNovoTipo = $('#novo_tipo_nome_rapido').val().trim();
+            if (!nomeNovoTipo) {
+                showToast('Atenção', 'O nome do novo tipo é obrigatório.', false);
+                return;
+            }
+
+            var btnSalvar = $(this);
+            btnSalvar.prop('disabled', true).text('Salvando...');
+
+            $.ajax({
+                url: "{{ url_for('salvar_tipo_ajax') }}", 
+                method: 'POST',
+                contentType: 'application/json', 
+                data: JSON.stringify({ nome_tipo: nomeNovoTipo }),
+                success: function(response) {
+                    if (response.success) {
+                        showToast('Sucesso', 'Novo tipo adicionado!', true);
+                        $('#addTipoRapidoModal').modal('hide');
+                        $('#novo_tipo_nome_rapido').val(''); 
+
+                        var newOption = new Option(response.tipo.nome_tipo, response.tipo.id, true, true);
+                        
+                        $('#modal_add_tipo_equipamento_id').append($(newOption).clone()).trigger('change');
+                        $('#edit_tipo_equipamento_id').append($(newOption).clone()).trigger('change');
+                        
+                        if (parentEquipModalId === 'addEquipamentoModal') {
+                            $('#modal_add_tipo_equipamento_id').val(response.tipo.id).trigger('change');
+                        } else if (parentEquipModalId === 'editEquipamentoModal') {
+                             $('#edit_tipo_equipamento_id').val(response.tipo.id).trigger('change');
+                        }
+
+                    } else {
+                        showToast('Erro', response.message || 'Não foi possível adicionar o tipo.', false);
+                    }
+                    btnSalvar.prop('disabled', false).text('Salvar Tipo');
+                },
+                error: function() {
+                    showToast('Erro de Comunicação', 'Não foi possível adicionar o tipo.', false);
+                    btnSalvar.prop('disabled', false).text('Salvar Tipo');
+                }
+            });
+        });
+         $('#addTipoRapidoModal').on('hidden.bs.modal', function () {
+            if (parentEquipModalId) {
+                setTimeout(function() {
+                    $('body').addClass('modal-open'); 
+                     $('#' + parentEquipModalId).modal('show');
+                }, 150); 
+            }
+        });
+
+
+    }); 
+</script>
+{% endblock %}

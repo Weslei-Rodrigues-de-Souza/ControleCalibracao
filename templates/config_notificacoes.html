@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}Configurações de Notificação{% endblock %}
+
+{% block head_extra %}
+<style>
+    .card-header .btn-link {
+        font-weight: 500;
+        color: #007bff; /* Cor primária do Bootstrap para links */
+        text-decoration: none;
+    }
+    .card-header .btn-link:hover {
+        color: #0056b3;
+    }
+    .card-header .btn-link.collapsed:after {
+        content: ' ▼'; /* Seta para baixo quando fechado */
+    }
+    .card-header .btn-link:not(.collapsed):after {
+        content: ' ▲'; /* Seta para cima quando aberto */
+    }
+    /* CSS do toast-container foi movido para base.html */
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>Configurações de Notificação</h2>
+<p class="text-muted">Configure como e quando as notificações de calibração devem ser enviadas.</p>
+<hr>
+
+{# O toast-container foi movido para base.html #}
+
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {# As mensagens flash agora serão tratadas pelo script em base.html para usar showToast #}
+    {% endif %}
+{% endwith %}
+
+<form method="POST" action="{{ url_for('configuracoes_notificacao') }}" id="configForm">
+    <div class="accordion" id="accordionConfigNotificacoes">
+
+        <div class="card">
+            <div class="card-header" id="headingGeral">
+                <h2 class="mb-0">
+                    <button class="btn btn-link btn-block text-left" type="button" data-toggle="collapse" data-target="#collapseGeral" aria-expanded="true" aria-controls="collapseGeral">
+                        Geral e Agendamento
+                    </button>
+                </h2>
+            </div>
+            <div id="collapseGeral" class="collapse" aria-labelledby="headingGeral" data-parent="#accordionConfigNotificacoes"> {# Removido 'show' para começar fechado #}
+                <div class="card-body">
+                    <div class="form-group">
+                        <label for="criterio_padrao_vencimento">Critério Padrão de Vencimento (para envios agendados)</label>
+                        <select class="form-control" id="criterio_padrao_vencimento" name="criterio_padrao_vencimento">
+                            {% for criterio in criterios_vencimento %}
+                            <option value="{{ criterio }}" {% if settings.criterio_padrao_vencimento == criterio %}selected{% endif %}>{{ criterio }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="agendamento_periodicidade">Periodicidade do Agendamento de Notificações</label>
+                        <select class="form-control" id="agendamento_periodicidade" name="agendamento_periodicidade">
+                            {% for periodo in periodicidades %}
+                            <option value="{{ periodo }}" {% if settings.agendamento_periodicidade == periodo %}selected{% endif %}>{{ periodo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label for="agendamento_data_inicio">Data de Início do Agendamento</label>
+                            <input type="text" class="form-control" id="agendamento_data_inicio" name="agendamento_data_inicio" value="{{ settings.agendamento_data_inicio }}" placeholder="DD/MM/AAAA">
+                             <small class="form-text text-muted">Use o formato DD/MM/AAAA. Ex: 31/12/2024</small>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="agendamento_horario">Horário do Agendamento</label>
+                            <select class="form-control" id="agendamento_horario" name="agendamento_horario">
+                                {% for hora in horarios %}
+                                <option value="{{ hora }}" {% if settings.agendamento_horario == hora %}selected{% endif %}>{{ hora }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">Salvar Geral e Agendamento</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" id="headingEmail">
+                <h2 class="mb-0">
+                    <button class="btn btn-link btn-block text-left collapsed" type="button" data-toggle="collapse" data-target="#collapseEmail" aria-expanded="false" aria-controls="collapseEmail">
+                        Configuração de E-mail (Gmail)
+                    </button>
+                </h2>
+            </div>
+            <div id="collapseEmail" class="collapse" aria-labelledby="headingEmail" data-parent="#accordionConfigNotificacoes">
+                <div class="card-body">
+                    <div class="form-group">
+                        <label for="remetente_email">E-mail Remetente (Gmail)</label>
+                        <input type="email" class="form-control" id="remetente_email" name="remetente_email" value="{{ settings.remetente_email }}" placeholder="seu_email@gmail.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="remetente_senha">Senha do E-mail (ou Senha de App do Gmail)</label>
+                        <input type="password" class="form-control" id="remetente_senha" name="remetente_senha" value="{{ settings.remetente_senha }}">
+                        <small class="form-text text-muted">Para Gmail, é recomendado usar uma "Senha de App". Veja <a href="https://support.google.com/accounts/answer/185833?hl=pt" target="_blank">como gerar uma aqui</a>.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="para">Destinatários (Para) - separados por vírgula</label>
+                        <input type="text" class="form-control" id="para" name="para" value="{{ settings.para }}" placeholder="email1@exemplo.com,email2@exemplo.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="cc">Destinatários (Cc) - separados por vírgula (opcional)</label>
+                        <input type="text" class="form-control" id="cc" name="cc" value="{{ settings.cc }}" placeholder="email3@exemplo.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="assunto">Assunto Padrão do E-mail</label>
+                        <input type="text" class="form-control" id="assunto" name="assunto" value="{{ settings.assunto }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="corpo_template_email">Corpo Template do E-mail (HTML permitido)</label>
+                        <textarea class="form-control" id="corpo_template_email" name="corpo_template_email" rows="5">{{ settings.corpo_template_email }}</textarea>
+                        <small class="form-text text-muted">Use `{tabela_equipamentos}` para inserir a lista de equipamentos.</small>
+                    </div>
+                     <div class="form-group">
+                        <label for="criterio_email_manual">Critério para Envio Manual de E-mail</label>
+                        <select class="form-control" id="criterio_email_manual" name="criterio_email_manual">
+                            {% for criterio in criterios_vencimento_manual %}
+                            <option value="{{ criterio }}" {% if settings.criterio_email_manual == criterio %}selected{% endif %}>{{ criterio }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">Salvar Configurações de E-mail</button>
+                    <button type="button" id="btnEnviarEmailManual" class="btn btn-info mt-3 ml-2">Enviar E-mail de Teste/Manual Agora</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" id="headingWhatsapp">
+                <h2 class="mb-0">
+                    <button class="btn btn-link btn-block text-left collapsed" type="button" data-toggle="collapse" data-target="#collapseWhatsapp" aria-expanded="false" aria-controls="collapseWhatsapp">
+                        Configuração de WhatsApp (Z-API & Gemini)
+                    </button>
+                </h2>
+            </div>
+            <div id="collapseWhatsapp" class="collapse" aria-labelledby="headingWhatsapp" data-parent="#accordionConfigNotificacoes">
+                <div class="card-body">
+                    <div class="form-group">
+                        <label for="zapi_instancia">ID da Instância Z-API</label>
+                        <input type="text" class="form-control" id="zapi_instancia" name="zapi_instancia" value="{{ settings.zapi_instancia }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="zapi_token_instancia">Token da Instância Z-API</label>
+                        <input type="password" class="form-control" id="zapi_token_instancia" name="zapi_token_instancia" value="{{ settings.zapi_token_instancia }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="zapi_client_token">Client Token Z-API (se aplicável)</label>
+                        <input type="password" class="form-control" id="zapi_client_token" name="zapi_client_token" value="{{ settings.zapi_client_token }}">
+                    </div>
+                     <div class="form-group">
+                        <label for="gemini_api_key">API Key Gemini (Opcional, para resumo)</label>
+                        <input type="password" class="form-control" id="gemini_api_key" name="gemini_api_key" value="{{ settings.gemini_api_key }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="whatsapp_para">Destinatários WhatsApp (números com DDI, separados por vírgula)</label>
+                        <input type="text" class="form-control" id="whatsapp_para" name="whatsapp_para" value="{{ settings.whatsapp_para }}" placeholder="5511999998888,5521888887777">
+                    </div>
+                    <div class="form-group">
+                        <label for="corpo_template_whatsapp">Corpo Template do WhatsApp</label>
+                        <textarea class="form-control" id="corpo_template_whatsapp" name="corpo_template_whatsapp" rows="5">{{ settings.corpo_template_whatsapp }}</textarea>
+                        <small class="form-text text-muted">Use `{tabela_equipamentos_texto}` para inserir a lista de equipamentos (formato texto). O Gemini irá reformatar esta lista.</small>
+                    </div>
+                     <div class="form-group">
+                        <label for="criterio_wpp_manual">Critério para Envio Manual de WhatsApp</label>
+                        <select class="form-control" id="criterio_wpp_manual" name="criterio_wpp_manual">
+                            {% for criterio in criterios_vencimento_manual %}
+                            <option value="{{ criterio }}" {% if settings.criterio_wpp_manual == criterio %}selected{% endif %}>{{ criterio }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">Salvar Configurações de WhatsApp</button>
+                    <button type="button" id="btnEnviarWhatsappManual" class="btn btn-info mt-3 ml-2">Enviar WhatsApp de Teste/Manual Agora</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header" id="headingCampos">
+                <h2 class="mb-0">
+                    <button class="btn btn-link btn-block text-left collapsed" type="button" data-toggle="collapse" data-target="#collapseCampos" aria-expanded="false" aria-controls="collapseCampos">
+                        Campos da Tabela (para E-mail e WhatsApp)
+                    </button>
+                </h2>
+            </div>
+            <div id="collapseCampos" class="collapse" aria-labelledby="headingCampos" data-parent="#accordionConfigNotificacoes">
+                <div class="card-body">
+                    <p>Selecione os campos que devem aparecer na tabela de equipamentos enviada nas notificações:</p>
+                    {% for key, display_name in campos_tabela_notificacao.items() %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="{{ key }}" id="campo_{{ key }}" name="{{ key }}" {% if settings.campos_tabela.get(key) %}checked{% endif %}>
+                        <label class="form-check-label" for="campo_{{ key }}">
+                            {{ display_name }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-primary mt-3">Salvar Configurações de Campos</button>
+                </div>
+            </div>
+        </div>
+
+    </div> {# Fim do accordion #}
+</form>
+
+{# O Modal foi removido daqui e a função showToast está em base.html #}
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+$(document).ready(function(){
+    // Garante que todos os collapses começam fechados.
+    $('#accordionConfigNotificacoes .collapse').removeClass('show');
+    // Para começar o primeiro aberto (Geral e Agendamento):
+    // $('#collapseGeral').addClass('show'); 
+
+    // A função showToast agora está em base.html e é global
+
+    $('#btnEnviarEmailManual').on('click', function() {
+        var btn = $(this);
+        var originalText = btn.text();
+        btn.prop('disabled', true).text('Enviando E-mail...');
+        showToast('Envio de E-mail', 'Processando envio do e-mail...', null);
+
+        $.ajax({
+            url: "{{ url_for('enviar_notificacao_email_manual') }}",
+            method: 'POST',
+            data: {
+                criterio_email_manual: $('#criterio_email_manual').val() 
+            },
+            success: function(response) {
+                showToast('Envio de E-mail', response.message, response.success);
+                btn.prop('disabled', false).text(originalText);
+            },
+            error: function(jqXHR) {
+                let errorMsg = "Erro de comunicação ao tentar enviar o e-mail.";
+                if (jqXHR.responseJSON && jqXHR.responseJSON.message) {
+                    errorMsg = jqXHR.responseJSON.message;
+                }
+                showToast('Erro no Envio de E-mail', errorMsg, false);
+                btn.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+
+    $('#btnEnviarWhatsappManual').on('click', function() {
+        var btn = $(this);
+        var originalText = btn.text();
+        btn.prop('disabled', true).text('Enviando WhatsApp...');
+        showToast('Envio de WhatsApp', 'Processando envio da mensagem de WhatsApp...', null); 
+
+        $.ajax({
+            url: "{{ url_for('enviar_notificacao_whatsapp_manual') }}",
+            method: 'POST',
+            data: {
+                criterio_wpp_manual: $('#criterio_wpp_manual').val()
+            },
+            success: function(response) {
+                showToast('Envio de WhatsApp', response.message, response.success);
+                btn.prop('disabled', false).text(originalText);
+            },
+            error: function(jqXHR) {
+                let errorMsg = "Erro de comunicação ao tentar enviar o WhatsApp.";
+                 if (jqXHR.responseJSON && jqXHR.responseJSON.message) {
+                    errorMsg = jqXHR.responseJSON.message;
+                }
+                showToast('Erro no Envio de WhatsApp', errorMsg, false);
+                btn.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

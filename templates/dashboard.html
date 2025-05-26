@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Controle de Calibração{% endblock %}
+
+{% block head_extra %}
+<style>
+    .card-stats .card-body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 150px; /* Altura mínima para os cards */
+    }
+    .card-stats .stat-number {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #007bff; /* Cor primária do Bootstrap */
+    }
+    .card-stats .stat-label {
+        font-size: 1.1rem;
+        color: #6c757d; /* Cor secundária do Bootstrap */
+    }
+    .card-deck .card {
+        margin-bottom: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="text-center">Dashboard de Calibrações</h2>
+            <p class="text-center text-muted">Visão geral do status dos seus equipamentos.</p>
+            <hr>
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-4 mb-4">
+            <div class="card text-center card-stats shadow-sm">
+                <div class="card-body">
+                    <div class="stat-number">{{ total_equip }}</div>
+                    <div class="stat-label">Equipamentos Totais</div>
+                </div>
+                <div class="card-footer text-muted">
+                    <a href="{{ url_for('lista_equipamentos') }}" class="stretched-link">Ver Todos</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card text-center card-stats shadow-sm">
+                <div class="card-body">
+                    <div class="stat-number text-success">{{ ativos_count }}</div>
+                    <div class="stat-label">Equipamentos Ativos</div>
+                </div>
+                 <div class="card-footer text-muted">
+                    <a href="{{ url_for('lista_equipamentos', search='Ativo') }}" class="stretched-link">Ver Ativos</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card text-center card-stats shadow-sm">
+                <div class="card-body">
+                    <div class="stat-number text-info">{{ em_calibracao_count }}</div>
+                    <div class="stat-label">Em Calibração</div>
+                </div>
+                <div class="card-footer text-muted">
+                     <a href="{{ url_for('lista_equipamentos', search='Em Calibração') }}" class="stretched-link">Ver em Calibração</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Aqui você pode adicionar gráficos ou outras informações se desejar no futuro #}
+    {# Por exemplo, um gráfico de equipamentos por status ou por data de vencimento #}
+    {# 
+    <div class="row mt-4">
+        <div class="col-12">
+            <h4>Gráficos e Estatísticas Adicionais</h4>
+            <p class="text-muted"> (Espaço reservado para futuros gráficos) </p>
+        </div>
+    </div>
+    #}
+
+</div>
+{% endblock %}
