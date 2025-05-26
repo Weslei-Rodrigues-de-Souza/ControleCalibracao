@@ -206,7 +206,10 @@ def lista_equipamentos():
     else:
         equipamentos_data = db.fetch_all_equipamentos_completos()
     
+    empresas_data = db.fetch_all_empresas()
+    empresas_unidade = db.fetch_empresas_unidade()
     equipamentos_display = []
+
     if equipamentos_data:
         for equip_row in equipamentos_data:
             equip = dict(equip_row) 
@@ -241,10 +244,11 @@ def lista_equipamentos():
     return render_template('lista_equipamentos.html', 
                            equipamentos=equipamentos_display, 
                            search_query=search_query,
+                           empresas=empresas_unidade,
                            tipos_equip_para_modal=tipos_equip_para_modal,
                            REGRAS_VALIDACAO_CRITERIOS=REGRAS_VALIDACAO_CRITERIOS) 
 
-@app.route('/equipamento/novo', methods=['POST']) 
+@app.route('/equipamento/novo', methods=['POST'])
 def novo_equipamento():
     if request.method == 'POST':
         dados_equip = {
@@ -252,14 +256,15 @@ def novo_equipamento():
             'fabricante': request.form.get('fabricante'),
             'modelo': request.form.get('modelo'),
             'numero_serie': request.form.get('numero_serie'),
-            'tag': request.form.get('tag'), 
-            'status': request.form.get('status_lista'), 
+            'tag': request.form.get('tag'),
+            'status': request.form.get('status_lista'),
             'localizacao': request.form.get('localizacao'),
+            'empresa_id': request.form.get('empresa_id') if request.form.get('empresa_id') not in [None, "None", ""] else None,
             'observacoes_equipamento': request.form.get('observacoes_equipamento'),
             'tipo_equipamento_id': request.form.get('tipo_equipamento_id') if request.form.get('tipo_equipamento_id') not in [None, "None", ""] else None,
             'faixa_de_uso': request.form.get('faixa_de_uso'),
             'ativo': 'ativo' in request.form,
-            'requer_calibracao': 'requer_calibracao' in request.form,
+            'requer_calibracao': 'requer_calibacao' in request.form,
             'em_calibracao': 'em_calibracao' in request.form,
             'destino_inativo': request.form.get('destino_inativo') if 'ativo' not in request.form else None
         }
@@ -267,39 +272,33 @@ def novo_equipamento():
             dados_equip['status'] = "Inativo"
         elif dados_equip['em_calibracao']:
             dados_equip['status'] = "Em Calibração"
-        
-        if not dados_equip['nome']:
-            flash('O nome do equipamento é obrigatório.', 'danger')
-        else:
-            try:
-                if db.add_equipamento(dados_equip):
-                    flash('Equipamento adicionado com sucesso!', 'success')
-                else: 
-                    if not any(message for category, message in get_flashed_messages(with_categories=True) if category == 'danger'):
-                         flash('Erro ao adicionar equipamento.', 'danger') 
-            except Exception as e: 
-                flash(f"Erro ao adicionar equipamento: {e}", "danger")
-        return redirect(url_for('lista_equipamentos')) 
-    return redirect(url_for('lista_equipamentos'))
 
+    if not dados_equip['nome']:
+        flash('O nome do equipamento é obrigatório.', 'danger')
+    else:
+        try:
+            if db.add_equipamento(dados_equip):
+                flash('Equipamento adicionado com sucesso!', 'success')
+            else: 
+                if not any(message for category, message in get_flashed_messages(with_categories=True) if category == 'danger'):
+                    flash('Erro ao adicionar equipamento.', 'danger') 
+        except Exception as e: 
+            flash(f"Erro ao adicionar equipamento: {e}", "danger")
+    return redirect(url_for('lista_equipamentos')) 
 
-@app.route('/equipamento/json/<int:equip_id>')
-def equipamento_json(equip_id):
+@app.route('/equipamento/<int:equip_id>')
+def editar_equipamento(equip_id): # Mantém o nome da função, mas a rota é GET
     equip_data_row = db.fetch_equipamento_completo_by_id(equip_id)
     if not equip_data_row:
         return jsonify({"error": "Equipamento não encontrado"}), 404
-    
-    equip_data = dict(equip_data_row)
-    if 'tag' not in equip_data:
-        equip_data['tag'] = equip_data.get('tag', '') 
 
-    historico_analises_com_flag = db.fetch_analises_by_equipamento_id(equip_id, add_is_latest_flag=True, app_utils_instance=utils)
-    equip_data['historico_analises'] = []
-    for analise_dict_from_db in historico_analises_com_flag: 
-        analise_dict = dict(analise_dict_from_db) 
-        analise_dict['anexos'] = [dict(row) for row in db.fetch_anexos_by_analise_id(analise_dict['id'])]
-        analise_dict['pontos_count'] = len(db.fetch_pontos_by_analise_id(analise_dict['id'])) 
-        equip_data['historico_analises'].append(analise_dict)
+    equip_data = dict(equip_data_row)
+    # Garante que 'empresa_id' está presente no dicionário do equipamento, mesmo que seja None
+    equip_data['empresa_id'] = equip_data.get('empresa_id') 
+
+    # Buscar a lista completa de empresas
+    empresas_data = db.fetch_all_empresas()
+    empresas_list = [dict(row) for row in empresas_data]
 
     unidades_medida = []
     if equip_data.get('tipo_equipamento_id'):
@@ -307,8 +306,11 @@ def equipamento_json(equip_id):
     equip_data['unidades_medida_tipo'] = unidades_medida
     
     tipos_equipamento = db.fetch_all_tipos_equipamento() 
-    return jsonify({"equipamento": equip_data, "tipos_equipamento": [dict(row) for row in tipos_equipamento]})
-
+    return jsonify({
+        "equipamento": equip_data,
+        "empresas": empresas_list,  # Incluir a lista de empresas
+        "tipos_equipamento": [dict(row) for row in tipos_equipamento]
+    })
 @app.route('/analise/json/<int:analise_id>')
 def get_analise_json(analise_id):
     analise_data = db.fetch_analise_by_id(analise_id, app_utils_instance=utils) 
@@ -330,56 +332,64 @@ def get_analise_json(analise_id):
 
 @app.route('/tipo/json/<int:tipo_id>') 
 def tipo_json(tipo_id):
-    tipo_data_row = db.fetch_tipo_equipamento_by_id(tipo_id) 
+    tipo_data_row = db.fetch_tipo_by_id(tipo_id)
     if not tipo_data_row:
-        return jsonify({"error": "Tipo de equipamento não encontrado"}), 404
-    
+        return jsonify({"error": "Tipo não encontrado"}), 404
     tipo_data = dict(tipo_data_row)
+    empresas_data = db.fetch_all_empresas() 
+    tipo_data['empresas'] = [dict(row) for row in empresas_data] 
+
     unidades_data = [dict(row) for row in db.fetch_unidades_by_tipo_id(tipo_id)]
     return jsonify({"tipo": tipo_data, "unidades": unidades_data})
 
-
 @app.route('/equipamento/editar/<int:equip_id>', methods=['POST']) 
-def editar_equipamento(equip_id):
-    equip_data_row = db.fetch_equipamento_completo_by_id(equip_id) 
-    if not equip_data_row:
-        flash('Equipamento não encontrado para editar.', 'danger')
-        return redirect(url_for('lista_equipamentos'))
-    
-    if request.method == 'POST':
-        dados_atualizados = {
-            'nome': request.form.get('edit_nome'), 
-            'fabricante': request.form.get('edit_fabricante'),
-            'modelo': request.form.get('edit_modelo'),
-            'numero_serie': request.form.get('edit_numero_serie'),
-            'tag': request.form.get('edit_tag'), 
-            'status': request.form.get('edit_status_lista'),
-            'localizacao': request.form.get('edit_localizacao'),
-            'observacoes_equipamento': request.form.get('edit_observacoes_equipamento'),
-            'tipo_equipamento_id': request.form.get('edit_tipo_equipamento_id') if request.form.get('edit_tipo_equipamento_id') not in [None, "None", ""] else None,
-            'faixa_de_uso': request.form.get('edit_faixa_de_uso'),
-            'ativo': 'edit_ativo' in request.form,
-            'requer_calibracao': 'edit_requer_calibracao' in request.form,
-            'em_calibracao': 'edit_em_calibracao' in request.form,
-            'destino_inativo': request.form.get('edit_destino_inativo') if 'edit_ativo' not in request.form else None
-        }
-        if not dados_atualizados['ativo']:
-            dados_atualizados['status'] = "Inativo"
-        elif dados_atualizados['em_calibracao']:
-            dados_atualizados['status'] = "Em Calibração"
+def post_editar_equipamento(equip_id):
+    try:
+        equip_data_row = db.fetch_equipamento_completo_by_id(equip_id)
+        if not equip_data_row:
+            return jsonify({"success": False, "message": "Equipamento não encontrado."}), 404
+        
+        if request.method == 'POST':
+            dados_atualizados = {
+                'nome': request.form.get('edit_nome'), 
+                'fabricante': request.form.get('edit_fabricante'),
+                'modelo': request.form.get('edit_modelo'),
+                'numero_serie': request.form.get('edit_numero_serie'),
+                'tag': request.form.get('edit_tag'), 
+                'status': request.form.get('edit_status_lista'),
+ 'localizacao': request.form.get('edit_localizacao'),
+                'empresa_id': request.form.get('edit_empresa_id') if request.form.get('edit_empresa_id') not in [None, "None", ""] else None,
+ 'observacoes_equipamento': request.form.get('edit_observacoes_equipamento'),
+                'tipo_equipamento_id': request.form.get('edit_tipo_equipamento_id') if request.form.get('edit_tipo_equipamento_id') not in [None, "None", ""] else None,
+                'faixa_de_uso': request.form.get('edit_faixa_de_uso'),
+                'ativo': 'edit_ativo' in request.form,
+                'requer_calibracao': 'edit_requer_calibracao' in request.form,
+                'em_calibracao': 'edit_em_calibracao' in request.form,
+                'destino_inativo': request.form.get('edit_destino_inativo') if 'edit_ativo' not in request.form else None
+            }
+            if not dados_atualizados['ativo']:
+                dados_atualizados['status'] = "Inativo"
+            elif dados_atualizados['em_calibracao']:
+                dados_atualizados['status'] = "Em Calibração"
+
+        tipos_equipamento = db.fetch_all_tipos_equipamento()
+
+        # Retornar os dados do equipamento, a lista de empresas e os tipos de equipamento
+        # Remova o return jsonify(...) daqui, pois esta rota POST deve apenas atualizar e redirecionar
+        # return jsonify({
+        #     "equipamento": equip_data,
+        #     "empresas": empresas_list, # Incluir a lista de empresas
+        #     "tipos_equipamento": [dict(row) for row in tipos_equipamento]
+        # })
 
         if not dados_atualizados['nome']:
-            flash('O nome do equipamento é obrigatório.', 'danger')
+            return jsonify(success=False, message="O nome do equipamento é obrigatório."), 400
+        if db.update_equipamento_principal(equip_id, dados_atualizados):
+            return jsonify(success=True, message="Equipamento atualizado com sucesso!")
         else:
-            try:
-                if db.update_equipamento_principal(equip_id, dados_atualizados):
-                    flash('Equipamento atualizado com sucesso!', 'success')
-            except Exception as e: 
-                flash(f"Erro ao atualizar equipamento: {e}", "danger")
-        return redirect(url_for('lista_equipamentos'))
-    
-    return redirect(url_for('lista_equipamentos'))
-
+            return jsonify(success=False, message="Erro ao atualizar equipamento."), 400
+    except Exception as e:
+        return jsonify(success=False, message=f"Erro ao atualizar equipamento: {e}"), 500
 
 @app.route('/equipamento/excluir/<int:equip_id>', methods=['POST'])
 def excluir_equipamento(equip_id):

@@ -54,7 +54,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-excel" viewBox="0 0 16 16">
                 <path d="M5.884 6.68a.5.5 0 1 0-.768.64L7.302 9.03a.5.5 0 0 0 .768-.64L5.884 6.68z"/>
                 <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2.5z"/>
-                <path d="M7.062 11.573c.495.294.952.423 1.397.423.554 0 1.03-.148 1.371-.443.34-.296.51-.703.51-1.207 0-.521-.17-.933-.51-1.233-.34-.3-.813-.449-1.367-.449-.558 0-.992.12-1.32.359-.33.238-.5.596-.5.983 0 .395.17.722.51.953zm-1.632 1.193c.253.389.631.699 1.133.927.504.228 1.097.342 1.783.342.825 0 1.539-.159 2.145-.477.608-.318.986-.753 1.139-1.303.153-.55.23-1.14.23-1.772 0-.655-.082-1.259-.247-1.81-.164-.55-.43-1.018-.797-1.404-.366-.385-.82-.69-1.361-.914a3.894 3.894 0 0 0-1.56-.343c-.74 0-1.39.134-1.941.402-.55.27-.956.634-1.217 1.093a3.287 3.287 0 0 0-.374.59c-.068.18-.102.353-.102.517 0 .228.076.437.228.628.152.19.38.284.682.284.244 0 .45-.06.617-.18s.29-.284.374-.492c.102-.254.287-.46.557-.618.27-.158.58-.237.926-.237.362 0 .682.079.96.237.277.158.485.37.624.635.138.264.207.564.207.899 0 .32-.07.6-.207.843a.993.993 0 0 1-.624.59c-.277.12-.596.18-.956.18-.445 0-.84-.075-1.18-.227a1.903 1.903 0 0 1-.785-.624l-.057-.082a.5.5 0 0 0-.736-.119l-.77.642a.5.5 0 0 0-.12.736l.057.082z"/>
+                <path d="M7.062 11.573c.495.294.952.423 1.397.423.554 0 1.03-.148 1.371-.443.34-.296.51-.703.51-1.207 0-.521-.17-.933-.51-1.233-.34-.3-.813-.449-1.367-.449-.558 0-1.03.12-1.371.359-.33.238-.5.596-.5.983 0 .395.17.722.51.953zm-1.632 1.193c.253.389.631.699 1.133.927.504.228 1.097.342 1.783.342.825 0 1.539-.159 2.145-.477.608-.318.986-.753 1.139-1.303.153-.55.23-1.14.23-1.772 0-.655-.082-1.259-.247-1.81-.164-.55-.43-1.018-.797-1.404-.366-.385-.82-.69-1.361-.914a3.894 3.894 0 0 0-1.56-.343c-.74 0-1.39.134-1.941.402-.55.27-.956.634-1.217 1.093a3.287 3.287 0 0 0-.374.59c-.068.18-.102.353-.102.517 0 .228.076.437.228.628.152.19.38.284.682.284.244 0 .45-.06.617-.18s.29-.284.374-.492c.102-.254.287-.46.557-.618.27-.158.58-.237.926-.237.362 0 .682.079.96.237.277.158.485.37.624.635.138.264.207.564.207.899 0 .32-.07.6-.207.843a.993.993 0 0 1-.624.59c-.277.12-.596.18-.956.18-.445 0-.84-.075-1.18-.227a1.903 1.903 0 0 1-.785-.624l-.057-.082a.5.5 0 0 0-.736-.119l-.77.642a.5.5 0 0 0-.12.736l.057.082z"/>
             </svg>
             Exportar Lista
         </a>
@@ -146,6 +146,16 @@
                 <div class="modal-body">
                     <div class="form-row">
                         <div class="form-group col-md-4">
+                            <label for="modal_add_empresa_id">Empresa*</label>
+                            <select class="form-control select2-basic" id="modal_add_empresa_id" name="empresa_id" required>
+                                <option value="">Selecione uma empresa...</option>
+                                {% for empresa in empresas %}
+                                <option value="{{ empresa.id }}">{{ empresa.nome_fantasia or empresa.razao_social }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="form-group col-md-4">
                             <label for="modal_add_nome">Nome do Equipamento*</label>
                             <input type="text" class="form-control" id="modal_add_nome" name="nome" required>
                         </div>
@@ -169,7 +179,7 @@
                         </div>
                         <div class="form-group col-md-4">
                             <label for="modal_add_tipo_equipamento_id">Tipo de Equipamento</label>
-                            <div class="input-group">
+                            <div class="input-group" style="width: 100%;"> {# Ajustado width para 100% #}
                                 <select class="form-control select2-basic" id="modal_add_tipo_equipamento_id" name="tipo_equipamento_id" style="width: 1%;">
                                     <option value="None">Nenhum</option>
                                     {% for tipo in tipos_equip_para_modal %} 
@@ -243,7 +253,7 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
         <div class="modal-content">
             <form method="POST" id="editEquipamentoForm"> 
-                <div class="modal-header">
+ <div class="modal-header">
                     <h5 class="modal-title" id="editEquipamentoModalLabel">Editar Equipamento</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                         <span aria-hidden="true">&times;</span>
@@ -264,6 +274,15 @@
                             <div class="pt-3">
                                 <div class="form-row">
                                     <div class="form-group col-md-4">
+                                        <label for="edit_empresa_id">Empresa*</label>
+                                        <select class="form-control select2-basic" id="edit_empresa_id" name="edit_empresa_id" required>
+                                            <option value="">Carregando empresas...</option>
+ {# As opções serão populadas por JavaScript #} </select>
+                                    </div>
+ </div>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+
                                         <label for="edit_nome">Nome do Equipamento*</label>
                                         <input type="text" class="form-control" id="edit_nome" name="edit_nome" required>
                                     </div>
@@ -287,7 +306,7 @@
                                     </div>
                                     <div class="form-group col-md-4">
                                         <label for="edit_tipo_equipamento_id">Tipo de Equipamento</label>
-                                         <div class="input-group">
+                                         <div class="input-group" style="width: 100%;"> {# Ajustado width para 100% #}
                                             <select class="form-control select2-basic" id="edit_tipo_equipamento_id" name="edit_tipo_equipamento_id" style="width: 1%;">
                                                 <option value="None">Nenhum</option>
                                                 {# As opções serão populadas por JavaScript #}
@@ -649,6 +668,7 @@
         $('#addEquipamentoModal').on('shown.bs.modal', function () {
             initializeSelect2($(this), $('#modal_add_tipo_equipamento_id'), 'Selecione um tipo');
             initializeSelect2($(this), $('#modal_add_status_lista'), 'Selecione um status');
+ initializeSelect2($(this), $('#modal_add_empresa_id'), 'Selecione uma empresa');
         });
         $('#editEquipamentoModal').on('shown.bs.modal', function () {
             initializeSelect2($(this), $('#edit_tipo_equipamento_id'), 'Selecione um tipo');
@@ -663,7 +683,10 @@
             if ($('#modal_add_status_lista').data('select2')) {
                 $('#modal_add_status_lista').val('Ativo').trigger('change'); 
             }
-            if (modalAddAtivoCheckbox) modalAddAtivoCheckbox.checked = true; 
+            if ($('#modal_add_empresa_id').data('select2')) {
+                 $('#modal_add_empresa_id').val(null).trigger('change');
+            }
+            if (modalAddAtivoCheckbox) modalAddAtivoCheckbox.checked = true;
             if (document.getElementById('modal_add_requer_calibracao')) document.getElementById('modal_add_requer_calibracao').checked = true;
             toggleModalAddDestinoInativo(); 
         });
@@ -673,10 +696,10 @@
             var equipId = button.data('equip-id');
             currentEditingEquipId = equipId; 
             var modal = $(this);
-            var form = modal.find('#editEquipamentoForm');
+ var form = modal.find('#editEquipamentoForm');
 
             modal.find('.modal-title').text('Editar Equipamento ID: ' + equipId);
-            form.attr('action', "{{ url_for('editar_equipamento', equip_id=0) }}".replace('0', equipId));
+            form.attr('action', "{{ url_for('post_editar_equipamento', equip_id=0) }}".replace('0', equipId));
             
             form.trigger('reset');
             if ($('#edit_tipo_equipamento_id').data('select2')) {
@@ -684,13 +707,16 @@
             }
             if ($('#edit_status_lista').data('select2')) {
                  $('#edit_status_lista').val(null).trigger('change'); 
+ }
+            if ($('#edit_empresa_id').data('select2')) {
+                 $('#edit_empresa_id').val(null).trigger('change');
             }
 
             $('#edit_historico_analises_container').html('<p class="text-muted">Carregando histórico...</p>');
             $('#btnNovaAnaliseModal').data('equip-id', equipId); 
 
             $.ajax({
-                url: "{{ url_for('equipamento_json', equip_id=0) }}".replace('0', equipId),
+                url: "{{ url_for('editar_equipamento', equip_id=0) }}".replace('0', equipId),
                 method: 'GET',
                 success: function(response) {
                     if (response.equipamento) {
@@ -702,6 +728,22 @@
                         modal.find('#edit_modelo').val(equip.modelo || '');
                         modal.find('#edit_numero_serie').val(equip.numero_serie || '');
                         
+                        var empresasSelectEdit = modal.find('#edit_empresa_id');
+ empresasSelectEdit.empty().append($('<option>', { value: '', text: 'Selecione uma empresa...' }));
+ if (response.empresas && response.empresas.length > 0) {
+ response.empresas.forEach(function(empresa) {
+                                empresasSelectEdit.append($('<option>', {
+ value: empresa.id,
+ text: empresa.nome_fantasia || empresa.razao_social
+ }));
+ });
+ }
+                        // Corrigido para selecionar o valor correto
+                        if (equip.empresa_id !== null) {
+                            empresasSelectEdit.val(String(equip.empresa_id)).trigger('change');
+                        } else {
+                            empresasSelectEdit.val('').trigger('change');
+                        }
                         var tiposSelectEdit = modal.find('#edit_tipo_equipamento_id');
                         tiposSelectEdit.empty().append($('<option>', { value: 'None', text: 'Nenhum' }));
                         if (response.tipos_equipamento && response.tipos_equipamento.length > 0) {
@@ -713,7 +755,7 @@
                             });
                         }
                         tiposSelectEdit.val(equip.tipo_equipamento_id !== null ? String(equip.tipo_equipamento_id) : 'None').trigger('change');
-
+                        
                         modal.find('#edit_faixa_de_uso').val(equip.faixa_de_uso || '');
                         modal.find('#edit_status_lista').val(equip.status || 'Ativo').trigger('change');
                         modal.find('#edit_localizacao').val(equip.localizacao || '');
@@ -735,6 +777,31 @@
                     $('#edit_historico_analises_container').html('<p class="text-danger">Erro na requisição AJAX para carregar dados do equipamento. Verifique o console.</p>');
                 }
             });
+        });
+        
+        // Adicionar manipulador de submit para o formulário de Edição de Equipamento
+        $('#editEquipamentoForm').on('submit', function(e) {
+            e.preventDefault();
+            var form = $(this);
+            var actionUrl = form.attr('action');
+            var formData = form.serialize();
+
+            $.post(actionUrl, formData)
+                .done(function(response) {
+                    if (response.success) {
+                        showToast('Sucesso', response.message, true);
+                        $('#editEquipamentoModal').modal('hide');
+                        setTimeout(function() {
+                            location.reload();
+                        }, 3000); // 2 segundos
+                    } else {
+                        showToast('Erro', response.message, false);
+                    }
+                })
+                .fail(function(xhr) {
+                    var msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Erro ao salvar.';
+                    showToast('Erro', msg, false);
+                });
         });
         
         function renderHistoricoAnalises(historico_analises, equipId, unidades_medida_tipo_equip) {
@@ -1161,6 +1228,7 @@
             formData.append('analise_pontos_json_data', JSON.stringify(currentAnalisePontos));
             
             $.ajax({
+               
                 url: form.attr('action'),
                 method: 'POST',
                 data: formData,

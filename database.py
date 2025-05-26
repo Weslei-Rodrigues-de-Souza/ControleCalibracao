@@ -62,6 +62,7 @@ class DatabaseManager:
                 tipo_equipamento_id INTEGER, faixa_de_uso TEXT, ultimo_numero_certificado TEXT, 
                 ultima_data_calibracao TEXT, proxima_data_calibracao TEXT, 
                 ultimo_resultado_geral_certificado TEXT, ativo INTEGER DEFAULT 1, 
+                empresa_id INTEGER, 
                 requer_calibracao INTEGER DEFAULT 1, em_calibracao INTEGER DEFAULT 0, destino_inativo TEXT,
                 FOREIGN KEY (tipo_equipamento_id) REFERENCES tipos_equipamento (id) ON DELETE SET NULL
             )""",
@@ -143,6 +144,7 @@ class DatabaseManager:
                 "proxima_data_calibracao": "TEXT",
                 "ultimo_resultado_geral_certificado": "TEXT",
                 "observacoes_equipamento": "TEXT",
+                "empresa_id": "INTEGER",
                 "ativo": "INTEGER DEFAULT 1",
                 "requer_calibracao": "INTEGER DEFAULT 1",
                 "em_calibracao": "INTEGER DEFAULT 0",
@@ -187,24 +189,26 @@ class DatabaseManager:
             conn.close()
 
     def fetch_all_equipamentos_completos(self):
-        query = """SELECT e.*, te.nome_tipo as tipo_equipamento_nome 
+        query = """SELECT e.*, te.nome_tipo as tipo_equipamento_nome, emp.nome_fantasia as empresa_nome 
                    FROM equipamentos e 
                    LEFT JOIN tipos_equipamento te ON e.tipo_equipamento_id = te.id
+                   LEFT JOIN empresas emp ON e.empresa_id = emp.id
                    ORDER BY e.nome"""
         return self.execute_query(query, fetch_all=True) or []
 
     def fetch_equipamento_completo_by_id(self, equip_id):
-        query = """SELECT e.*, te.nome_tipo as tipo_equipamento_nome
+        query = """SELECT e.*, te.nome_tipo as tipo_equipamento_nome, emp.nome_fantasia as empresa_nome
                    FROM equipamentos e
                    LEFT JOIN tipos_equipamento te ON e.tipo_equipamento_id = te.id
+                   LEFT JOIN empresas emp ON e.empresa_id = emp.id
                    WHERE e.id = ?""" 
         return self.execute_query(query, (equip_id,), fetch_one=True)
 
     def add_equipamento(self, data):
         query = """INSERT INTO equipamentos (nome, fabricante, modelo, numero_serie, tag, status, localizacao,
                                           observacoes_equipamento, tipo_equipamento_id, faixa_de_uso,
-                                          ativo, requer_calibracao, em_calibracao, destino_inativo)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                          empresa_id, ativo, requer_calibracao, em_calibracao, destino_inativo)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
         params = (
             data.get('nome'), data.get('fabricante'), data.get('modelo'), data.get('numero_serie'),
             data.get('tag'),
@@ -213,14 +217,15 @@ class DatabaseManager:
             1 if data.get('ativo') else 0,
             1 if data.get('requer_calibracao') else 0,
             1 if data.get('em_calibracao') else 0,
-            data.get('destino_inativo')
+            data.get('destino_inativo'),
+            data.get('empresa_id')
         )
         return self.execute_query(query, params, commit=True)
 
     def update_equipamento_principal(self, equip_id, data):
         query = """UPDATE equipamentos SET nome=?, fabricante=?, modelo=?, 
                           numero_serie=?, tag=?, status=?, localizacao=?, 
-                          observacoes_equipamento=?, tipo_equipamento_id=?, 
+                          observacoes_equipamento=?, tipo_equipamento_id=?, empresa_id=?,
                           faixa_de_uso=?, ativo=?, requer_calibracao=?, 
                           em_calibracao=?, destino_inativo=?
                    WHERE id=?"""
@@ -229,6 +234,7 @@ class DatabaseManager:
             data.get('tag'),
             data.get('status'), data.get('localizacao'), data.get('observacoes_equipamento'),
             data.get('tipo_equipamento_id'), data.get('faixa_de_uso'),
+            data.get('empresa_id'),
             1 if data.get('ativo') else 0,
             1 if data.get('requer_calibracao') else 0,
             1 if data.get('em_calibracao') else 0,
@@ -553,4 +559,12 @@ class DatabaseManager:
                     print(f"Aviso: Erro ao excluir arquivo/pasta do certificado ISO da empresa {empresa_id}: {e}")
         
         return self.execute_query("DELETE FROM empresas WHERE id = ?", (empresa_id,), commit=True)
+
+    def fetch_empresas_unidade(self):
+        query = "SELECT * FROM empresas WHERE categoria = 'Unidade'"
+        return self.execute_query(query, fetch_all=True) or []
+
+    def fetch_tipo_by_id(self, tipo_id):
+        query = "SELECT * FROM tipos_equipamento WHERE id = ?"
+        return self.execute_query(query, (tipo_id,), fetch_one=True)
 
