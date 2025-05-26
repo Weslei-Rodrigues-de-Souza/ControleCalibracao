@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciar Usuários{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Gerenciar Usuários</h2>
+
+    <!-- Espaço para listar usuários (implementação futura) -->
+    <div id="user-list" class="mt-3">
+        <!-- Usuários serão carregados aqui via JavaScript ou backend -->
+        <p>Lista de usuários virá aqui.</p>
+        <!-- Exemplo de botão para abrir modal (adapte conforme necessário) -->
+        {% if current_user.is_authenticated %}
+            {% if current_user.requires_password_change %}
+            <div class="alert alert-warning" role="alert">
+                Por favor, altere sua senha temporária.
+            </div>
+            {% endif %}
+             <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#changePasswordModal" data-user-id="{{ current_user.id }}">
+                Alterar Minha Senha
+            </button>
+        {% endif %}
+    </div>
+
+    <!-- Modal de Alteração de Senha -->
+    <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="changePasswordModalLabel">Alterar Senha</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="changePasswordForm">
+                        <input type="hidden" id="modal-user-id" name="user_id" value="{{ current_user.id }}"> {# Para o usuário logado, usamos current_user.id #}
+                        <div class="mb-3">
+                            <label for="current_password" class="form-label">Senha Atual</label>
+                            <input type="password" class="form-control" id="current_password" name="current_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">Nova Senha</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirm_password" class="form-label">Confirmar Nova Senha</label>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Salvar Nova Senha</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const changePasswordModal = document.getElementById('changePasswordModal');
+    const changePasswordForm = document.getElementById('changePasswordForm');
+
+    // Optional: Set user ID if needed when modal opens (more relevant for admin changing others' passwords)
+    changePasswordModal.addEventListener('show.bs.modal', function (event) {
+        // const button = event.relatedTarget; // Button that triggered the modal
+        // const userId = button.getAttribute('data-user-id'); // Extract info from data-* attributes
+        // const modalUserIdInput = changePasswordModal.querySelector('#modal-user-id');
+        // if (modalUserIdInput) {
+        //     modalUserIdInput.value = userId;
+        // }
+    });
+
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', function(event) {
+            event.preventDefault(); // Prevent default form submission
+
+            const formData = new FormData(changePasswordForm);
+            const userId = formData.get('user_id'); // Get user_id from hidden input
+
+            // Basic validation (more comprehensive validation should be on the backend)
+            const newPassword = formData.get('new_password');
+            const confirmPassword = formData.get('confirm_password');
+            if (newPassword !== confirmPassword) {
+                 alert('A nova senha e a confirmação não coincidem.'); // Use a flash message or better UI feedback
+                 return;
+            }
+
+            fetch('/alterar_senha', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Assuming you have a way to show flash messages in base.html or via JS
+                    // For simplicity, using alert here. You should use Flask's flash messages.
+                     alert(data.message); // Show success message
+                    const modal = bootstrap.Modal.getInstance(changePasswordModal);
+                    modal.hide(); // Close the modal
+
+                    // Optional: Redirect or update UI after successful password change
+                    // If the user was required to change password, redirect them after success
+                    {% if current_user.requires_password_change %}
+                        window.location.href = "{{ url_for('dashboard') }}"; // Redirect to dashboard or desired page
+                    {% else %}
+                        // If not required to change, maybe just update a status or stay on page
+                        console.log("Password changed successfully.");
+                    {% endif %}
+
+                } else {
+                    // Assuming you have a way to show flash messages in base.html or via JS
+                     alert(data.message); // Show error message
+                }
+            })
+            .catch(error => {
+                console.error('Erro:', error);
+                 alert('Ocorreu um erro ao processar sua solicitação.'); // Show a generic error
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

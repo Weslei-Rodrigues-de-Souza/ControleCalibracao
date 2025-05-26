@@ -6,6 +6,7 @@ import datetime
 class DatabaseManager:
     def __init__(self, db_file_path):
         self.db_path = db_file_path
+        self.create_tables_if_not_exist() # Ensure tables exist on initialization
 
     def _get_conn(self):
         db_dir_path = os.path.dirname(self.db_path)
@@ -55,6 +56,17 @@ class DatabaseManager:
         return success
     
     def create_tables_if_not_exist(self):
+        """Cria as tabelas do banco de dados se não existirem."""
+        create_usuarios_table_query = """
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome_usuario TEXT UNIQUE NOT NULL,
+            senha TEXT NOT NULL,
+            ativo BOOLEAN DEFAULT 1, 
+            requires_password_change BOOLEAN DEFAULT 0,
+            data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        """
         queries = [
             """CREATE TABLE IF NOT EXISTS equipamentos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, fabricante TEXT, modelo TEXT, 
@@ -114,6 +126,7 @@ class DatabaseManager:
             )"""
         ]
         conn = self._get_conn()
+        self.execute_query(create_usuarios_table_query, is_ddl=True) # Create users table
         cursor = conn.cursor()
         try:
             for query in queries:
@@ -571,3 +584,43 @@ class DatabaseManager:
     def fetch_empresas_calibracao(self):
         query = "SELECT * FROM empresas WHERE categoria = 'Calibração'"
         return self.execute_query(query, fetch_all=True) or []
+
+    # --- Métodos CRUD para Usuários (adicionados para login) ---
+    def get_user_by_id(self, user_id):
+        """Busca um usuário pelo ID."""
+        query = "SELECT * FROM usuarios WHERE id = ?"
+        return self.execute_query(query, (user_id,), fetch_one=True)
+
+    def get_user_by_username(self, nome_usuario):
+        """Busca um usuário pelo nome de usuário."""
+        query = "SELECT * FROM usuarios WHERE nome_usuario = ?"
+        return self.execute_query(query, (nome_usuario,), fetch_one=True)
+
+    def create_user(self, nome_usuario, senha_hash):
+        """Cria um novo usuário no banco de dados."""
+        query = "INSERT INTO usuarios (nome_usuario, senha) VALUES (?, ?)"
+        return self.execute_query(query, (nome_usuario, senha_hash), commit=True)
+
+    def update_user_password(self, user_id, new_password_hash):
+        """Atualiza a senha de um usuário."""
+        query = "UPDATE usuarios SET senha = ? WHERE id = ?"
+        return self.execute_query(query, (new_password_hash, user_id), commit=True)
+
+    def set_password_change_required(self, user_id, required):
+        """Define se um usuário precisa trocar a senha."""
+        query = "UPDATE usuarios SET requires_password_change = ? WHERE id = ?"
+        flag = 1 if required else 0
+        return self.execute_query(query, (flag, user_id), commit=True)
+    
+    def get_all_users(self):
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM usuarios")
+        users = cursor.fetchall()
+        conn.close()
+        return users
+
+    def close(self):
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.close()
+            self.conn = None

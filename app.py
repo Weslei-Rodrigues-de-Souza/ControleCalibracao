@@ -4,25 +4,28 @@ import os
 import json
 import shutil
 import subprocess
-import platform
+
 import smtplib 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart 
 import requests 
 import threading 
 import pandas as pd 
-from io import BytesIO 
+from io import BytesIO, StringIO
 from zoneinfo import ZoneInfo 
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, abort, g, jsonify, Response, make_response
 from werkzeug.utils import secure_filename
 import openpyxl 
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from openpyxl.styles.borders import Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows 
 from openpyxl.utils import get_column_letter 
 
 from database import DatabaseManager 
-
+from werkzeug.security import generate_password_hash, check_password_hash
+from database import DatabaseManager # Assumindo que DatabaseManager está em database.py
 ANEXOS_BASE_DIR_NAME = "anexos_certificados_flask"
 ANEXOS_EMPRESAS_DIR_NAME = "anexos_empresas_iso" 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -32,7 +35,7 @@ DB_NAME_FOR_PATH = "calibracao_equipamentos.db"
 DB_FULL_PATH = os.path.join(BASE_DIR, DB_NAME_FOR_PATH)
 
 
-app = Flask(__name__)
+app = Flask(__name__) 
 app.secret_key = os.urandom(24) 
 app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, ANEXOS_BASE_DIR_NAME)
 app.config['UPLOAD_FOLDER_EMPRESAS'] = os.path.join(BASE_DIR, ANEXOS_EMPRESAS_DIR_NAME) 
@@ -69,11 +72,58 @@ HORARIOS_NOTIFICACAO = [f"{h:02d}:00" for h in range(0, 24)]
 
 db = DatabaseManager(DB_FULL_PATH) 
 
+# --- RESETAR SENHA DO ADMIN PARA 123 SEMPRE QUE INICIAR (remova depois de testar) ---
+admin_user = db.get_user_by_username("Admin")
+if not admin_user:
+    db.create_user("Admin", generate_password_hash("123", method='pbkdf2:sha256'))
+    # Se quiser marcar para troca de senha, faça isso em seguida:
+    admin_user = db.get_user_by_username("Admin")
+    if admin_user:
+        db.set_password_change_required(admin_user['id'], True)
+    print("Usuário Admin criado com senha 123.")
+else:
+    db.update_user_password(admin_user['id'], generate_password_hash("123", method='pbkdf2:sha256'))
+    db.set_password_change_required(admin_user['id'], True)
+    print("Senha do usuário Admin foi resetada para 123.")
+
+# Inicializar o Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'  # Define o endpoint para a página de login
+
+# Classe de Usuário para Flask-Login
+class User(UserMixin):
+    def __init__(self, user_id, nome_usuario, ativo=True, requires_password_change=False):
+        self.id = user_id
+        self.nome_usuario = nome_usuario
+        self._ativo = ativo  # Use atributo privado
+        self.requires_password_change = requires_password_change
+
+    @property
+    def is_active(self):
+        return self._ativo
+
+# Função user_loader para Flask-Login
+@login_manager.user_loader
+def load_user(user_id):
+    """Carrega um usuário dado seu ID.""" 
+    db_instance = db  # Use o objeto global db
+    user_data = db_instance.get_user_by_id(user_id)
+    if user_data:
+        user_dict = dict(user_data)
+        user = User(
+            user_dict['id'],
+            user_dict['nome_usuario'],
+            user_dict.get('ativo', True),
+            user_dict.get('requires_password_change', False)
+        )
+        return user
+    return None
+
 class AppUtils:
     def __init__(self, db_manager_instance):
-        self.db_manager = db_manager_instance 
-    
-    regras_cores = COLOR_RULES_FIXED 
+        self.db_manager = db_manager_instance
+        self.regras_cores = COLOR_RULES_FIXED
 
     @staticmethod
     def format_date_for_display(date_str_iso):
@@ -85,26 +135,26 @@ class AppUtils:
             dt_obj = datetime.datetime.strptime(str(date_str_iso), '%Y-%m-%d')
             return dt_obj.strftime('%d/%m/%Y')
         except ValueError:
-            try: 
+            try:
                 dt_obj = datetime.datetime.strptime(str(date_str_iso), '%Y-%m-%d %H:%M:%S')
                 return dt_obj.strftime('%d/%m/%Y')
             except ValueError:
-                 return str(date_str_iso) 
+                 return str(date_str_iso)
         except TypeError:
              return "N/A"
 
 
-    @staticmethod 
+    @staticmethod
     def calcular_dias_para_vencimento(data_proxima_str, ativo=1, em_calibracao=0):
         if not ativo: return None, "status_inativo", STATUS_INATIVO_COR_HEX
         if em_calibracao: return None, "status_em_calibracao", STATUS_EM_CALIBRACAO_COR_HEX
-        if not data_proxima_str or data_proxima_str == "N/A": 
+        if not data_proxima_str or data_proxima_str == "N/A":
             return None, "status_semdata", STATUS_SEM_DATA_COR_HEX
         try:
             data_proxima = datetime.datetime.strptime(str(data_proxima_str), "%Y-%m-%d").date()
             hoje = datetime.date.today()
             delta = (data_proxima - hoje).days
-            for regra in AppUtils.regras_cores: 
+            for regra in AppUtils.regras_cores:
                 lim_inf, lim_sup = regra['limite_inferior'], regra['limite_superior']
                 if lim_inf is not None and lim_sup is not None:
                     if lim_inf <= delta < lim_sup: return delta, regra['tag_style'], regra['cor_hex']
@@ -112,16 +162,17 @@ class AppUtils:
                     if delta >= lim_inf: return delta, regra['tag_style'], regra['cor_hex']
                 elif lim_inf is None and lim_sup is not None:
                      if delta < lim_sup: return delta, regra['tag_style'], regra['cor_hex']
-            return delta, "status_semdata", STATUS_SEM_DATA_COR_HEX 
+            return delta, "status_semdata", STATUS_SEM_DATA_COR_HEX
         except ValueError as e:
             print(f"DEBUG calcular_dias: ValueError ao parsear data '{data_proxima_str}': {e}")
             return None, "status_semdata", STATUS_SEM_DATA_COR_HEX
 
-    def check_calibration_due_dates_and_update_status(self): 
+    def check_calibration_due_dates_and_update_status(self):
+        # Obter uma nova instância do DB para esta thread/contexto, se necessário
         equipamentos = self.db_manager.fetch_all_equipamentos_completos()
         updated_count = 0
-        for eq_data_row in equipamentos: 
-            eq_data = dict(eq_data_row) 
+        for eq_data_row in equipamentos:
+            eq_data = dict(eq_data_row)
             eq_id = eq_data['id']
             prox_cal_str_equip = eq_data['proxima_data_calibracao']
             current_status_equip = eq_data['status']
@@ -131,19 +182,119 @@ class AppUtils:
             if not ativo or em_calibracao: continue
             dias_venc, _, _ = AppUtils.calcular_dias_para_vencimento(prox_cal_str_equip, ativo, em_calibracao)
             new_status = current_status_equip
-
-            if dias_venc is not None and dias_venc <= 0:
-                if current_status_equip != "Calibração Vencida": new_status = "Calibração Vencida"
-            elif dias_venc is not None and dias_venc > 0:
-                 if current_status_equip == "Calibração Vencida": new_status = "Ativo"
+            # Lógica para atualizar o status baseada nos dias_venc
+            if dias_venc is not None:
+                if dias_venc <= 0 and current_status_equip != "Calibração Vencida":
+                    new_status = "Calibração Vencida"
+                elif dias_venc > 0 and current_status_equip == "Calibração Vencida":
+                     # Se estava vencido e agora não está mais (ex: data corrigida ou nova análise), definir para um status padrão ou baseado em lógica adicional
+                     # Aqui, assumimos que se não está vencido, e não está 'Em Calibração', o status padrão é 'Ativo' ou manter o último status não-vencido.
+                     # Uma abordagem simples é definir como 'Ativo' se não estiver 'Em Calibração' e a data for futura
+                     if not em_calibracao:
+                          new_status = "Ativo" # Ou outro status padrão apropriado
 
             if new_status != current_status_equip:
-                if self.db_manager.execute_query("UPDATE equipamentos SET status=? WHERE id=?", (new_status, eq_id), commit=True):
-                    updated_count += 1
-        if updated_count > 0:
-            flash(f"{updated_count} status de equipamentos atualizados automaticamente.", "info")
-        return updated_count > 0
-    
+                 self.db_manager.update_equipamento_status(eq_id, new_status)
+                 updated_count += 1
+        # print(f"Status de {updated_count} equipamentos atualizados.") # Opcional: logar atualizações
+
+utils = AppUtils(db) # <-- Instancie a classe AppUtils aqui, após sua definição
+
+# Adicionar rotas de Login e Logout
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+            flash('Por favor, altere sua senha temporária.', 'warning') # Mensagem amarela/laranja
+            if current_user.requires_password_change:
+                flash('Por favor, altere sua senha temporária.', 'warning')
+                return redirect(url_for('gerenciar_usuarios'))
+
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('dashboard')) # Redireciona para o dashboard ou página original se já logado e senha não precisa ser trocada
+
+
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        db_instance = db # Obter a instância do banco de dados usando get_db()
+        user_data = db_instance.get_user_by_username(username)
+        if user_data and check_password_hash(user_data['senha'], password):
+            user_dict = dict(user_data)
+            user = User(
+                user_dict['id'],
+                user_dict['nome_usuario'],
+                user_dict.get('ativo', True),
+                user_dict.get('requires_password_change', False)
+            )
+            login_user(user)
+
+            if user.requires_password_change:
+                flash('Por favor, altere sua senha temporária.', 'warning')
+                return redirect(url_for('gerenciar_usuarios')) # Redireciona para a página de gerenciamento
+            else:
+                next_page = request.args.get('next') # Pega a URL original que o usuário tentou acessar (pode ser usado, mas o redirecionamento abaixo tem prioridade)
+                return redirect(next_page or url_for('dashboard')) # Redireciona
+
+        else:
+            # Credenciais inválidas
+            flash('Usuário ou senha inválidos.', 'danger') # Use 'danger' para cor vermelha (Bootstrap) ou defina suas classes
+            return render_template('login.html')
+
+    # Método GET
+    return render_template('login.html')
+
+# Rota de Logout
+@app.route('/logout')
+@login_required # Apenas usuários logados podem fazer logout
+def logout():
+    logout_user()
+    flash('Você foi desconectado.', 'info') # Mensagem de informação
+    return redirect(url_for('login')) # Redireciona para a página de login
+
+@app.route('/gerenciar_usuarios')
+@login_required # Protegida por login
+def gerenciar_usuarios():
+    # Apenas administradores ou usuários com permissão devem acessar esta rota
+    # Por enquanto, vamos permitir acesso se o usuário for 'Admin' (exemplo simples)
+    if current_user.nome_usuario != 'Admin':
+        flash('Você não tem permissão para acessar esta página.', 'danger')
+        return redirect(url_for('dashboard')) # Ou outra página apropriada
+
+    db_instance = db # Obter a instância do banco de dados
+    users = db_instance.get_all_users()
+    # Filtrar o usuário atual da lista para não poder excluir a si mesmo pela interface simples
+    users_display = [u for u in users if u['id'] != current_user.id]
+    return render_template('gerenciar_usuarios.html', users=users_display)
+
+# Rota para Adicionar Novo Usuário (AJAX/Form)
+@app.route('/adicionar_usuario', methods=['POST'])
+@login_required
+def adicionar_usuario():
+    if current_user.nome_usuario != 'Admin':
+        flash('Você não tem permissão para realizar esta ação.', 'danger')
+        return redirect(url_for('gerenciar_usuarios'))
+
+    username = request.form.get('username')
+    # Gerar uma senha temporária e marcar para troca obrigatória
+    temporary_password = "changeme123" # Senha temporária simples, idealmente mais complexa ou gerada aleatoriamente
+    hashed_password = generate_password_hash(temporary_password, method='sha256')
+
+    db_instance = db
+    try:
+        success = db_instance.create_user(username, hashed_password, requires_password_change=True)
+        if success:
+            flash(f'Usuário "{username}" criado com sucesso. Senha temporária: "{temporary_password}". Requer troca no primeiro login.', 'success')
+        else:
+            flash(f'Erro ao criar usuário "{username}". Nome de usuário já existe?', 'danger')
+    except Exception as e:
+        flash(f'Erro inesperado ao criar usuário: {e}', 'danger')
+
+    return redirect(url_for('gerenciar_usuarios'))
+
+@app.route('/alterar_senha', methods=['POST'])
+@login_required # Protegida por login
+def alterar_senha():
+    # Keep this route function here, the class definition is moved above
     def load_notification_settings(self): 
         default_settings = {
             "remetente_email": "", "remetente_senha": "", "para": "", "cc": "",
@@ -174,8 +325,50 @@ class AppUtils:
         except (IOError, json.JSONDecodeError) as e:
             print(f"Erro ao carregar {NOTIFICACAO_CONFIG_FILE_PATH}: {e}. Usando configurações padrão.")
         return default_settings
+    current_password = request.form.get('current_password')
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
 
-utils = AppUtils(db) 
+    db_instance = db # Obter a instância do banco de dados
+    user_data = db_instance.get_user_by_id(current_user.id)
+
+    # Verificar se a senha atual corresponde (apenas se não for uma senha temporária forçando a troca)
+    if user_data and not current_user.requires_password_change and not check_password_hash(user_data['senha'], current_password):
+        flash('Senha atual incorreta.', 'danger')
+        # Se for AJAX, retorna JSON
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+             return jsonify({'status': 'error', 'message': 'Senha atual incorreta.'})
+        return redirect(url_for('gerenciar_usuarios')) # Redireciona de volta
+
+    if new_password != confirm_password:
+        flash('A nova senha e a confirmação não coincidem.', 'danger')
+        # Se for AJAX, retorna JSON
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+             return jsonify({'status': 'error', 'message': 'A nova senha e a confirmação não coincidem.'})
+        return redirect(url_for('gerenciar_usuarios'))
+
+    hashed_new_password = generate_password_hash(new_password, method='sha256')
+
+    try:
+        db_instance.update_user_password(current_user.id, hashed_new_password)
+        # Desmarcar a necessidade de troca de senha após a alteração bem-sucedida
+        db_instance.set_password_change_required(current_user.id, False)
+        # Atualizar o objeto current_user na sessão se possível (ou apenas confiar na próxima recarga)
+        current_user.requires_password_change = False
+
+        flash('Senha alterada com sucesso!', 'success')
+        # Se for AJAX, retorna JSON
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+             return jsonify({'status': 'success', 'message': 'Senha alterada com sucesso!'})
+        return redirect(url_for('gerenciar_usuarios')) # Redireciona para a página de gerenciamento de usuários
+    except Exception as e:
+        print(f"Erro ao alterar a senha: {e}")
+        flash('Ocorreu um erro ao alterar a senha.', 'danger')
+        # Se for AJAX, retorna JSON
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+             return jsonify({'status': 'error', 'message': 'Ocorreu um erro ao alterar a senha.'})
+        return redirect(url_for('gerenciar_usuarios'))
+
 
 @app.context_processor
 def inject_utilities():
@@ -185,21 +378,31 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
+
 # --- Rotas Flask ---
 @app.route('/')
+@login_required
+def index(): # Renomeado de dashboard para ser a rota raiz, o dashboard real será outra rota
+    print(f"Usuário logado: {current_user.nome_usuario}")
+    return render_template('dashboard.html', 
+                           total_equip=total_equip, 
+                           ativos_count=ativos_count, 
+                           em_calibracao_count=em_calibracao_count)
+@app.route('/dashboard')
+@login_required
 def dashboard():
     utils.check_calibration_due_dates_and_update_status()
     equipamentos = db.fetch_all_equipamentos_completos()
     total_equip = len(equipamentos) if equipamentos else 0
     ativos_count = sum(1 for eq in equipamentos if eq['ativo']) if equipamentos else 0
     em_calibracao_count = sum(1 for eq in equipamentos if eq['ativo'] and eq['em_calibracao']) if equipamentos else 0
-    return render_template('dashboard.html', 
-                           total_equip=total_equip, 
+    return render_template('dashboard.html', total_equip=total_equip, 
                            ativos_count=ativos_count, 
                            em_calibracao_count=em_calibracao_count)
 
 @app.route('/equipamentos')
 def lista_equipamentos():
+    # Esta rota ainda não está protegida com @login_required para manter a funcionalidade atual.
     search_query = request.args.get('search', '')
     if search_query:
         equipamentos_data = db.search_equipamentos(search_query)
@@ -250,6 +453,7 @@ def lista_equipamentos():
                            REGRAS_VALIDACAO_CRITERIOS=REGRAS_VALIDACAO_CRITERIOS) 
 
 @app.route('/equipamento/novo', methods=['POST'])
+@login_required
 def novo_equipamento():
     if request.method == 'POST':
         dados_equip = {
@@ -265,7 +469,7 @@ def novo_equipamento():
             'tipo_equipamento_id': request.form.get('tipo_equipamento_id') if request.form.get('tipo_equipamento_id') not in [None, "None", ""] else None,
             'faixa_de_uso': request.form.get('faixa_de_uso'),
             'ativo': 'ativo' in request.form,
-            'requer_calibracao': 'requer_calibacao' in request.form,
+            'requer_calibracao': 'requer_calibracao' in request.form,
             'em_calibracao': 'em_calibracao' in request.form,
             'destino_inativo': request.form.get('destino_inativo') if 'ativo' not in request.form else None
         }
@@ -274,20 +478,21 @@ def novo_equipamento():
         elif dados_equip['em_calibracao']:
             dados_equip['status'] = "Em Calibração"
 
-    if not dados_equip['nome']:
-        flash('O nome do equipamento é obrigatório.', 'danger')
-    else:
-        try:
-            if db.add_equipamento(dados_equip):
-                flash('Equipamento adicionado com sucesso!', 'success')
-            else: 
-                if not any(message for category, message in get_flashed_messages(with_categories=True) if category == 'danger'):
-                    flash('Erro ao adicionar equipamento.', 'danger') 
-        except Exception as e: 
-            flash(f"Erro ao adicionar equipamento: {e}", "danger")
+        if not dados_equip['nome']:
+            flash('O nome do equipamento é obrigatório.', 'danger')
+        else:
+            try:
+                if db.add_equipamento(dados_equip):
+                    flash('Equipamento adicionado com sucesso!', 'success')
+                else:
+                    if not any(message for category, message in get_flashed_messages(with_categories=True) if category == 'danger'):
+                        flash('Erro ao adicionar equipamento.', 'danger')
+            except Exception as e:
+                flash(f"Erro ao adicionar equipamento: {e}", "danger")
     return redirect(url_for('lista_equipamentos')) 
 
 @app.route('/equipamento/<int:equip_id>')
+@login_required
 def editar_equipamento(equip_id): # Mantém o nome da função, mas a rota é GET
     equip_data_row = db.fetch_equipamento_completo_by_id(equip_id)
     if not equip_data_row:
@@ -313,6 +518,7 @@ def editar_equipamento(equip_id): # Mantém o nome da função, mas a rota é GE
         "tipos_equipamento": [dict(row) for row in tipos_equipamento]
     })
 @app.route('/analise/json/<int:analise_id>')
+@login_required
 def get_analise_json(analise_id):
     analise_data = db.fetch_analise_by_id(analise_id, app_utils_instance=utils) 
     if not analise_data: 
@@ -332,6 +538,7 @@ def get_analise_json(analise_id):
     return jsonify({"analise": analise_data_dict})
 
 @app.route('/tipo/json/<int:tipo_id>') 
+@login_required
 def tipo_json(tipo_id):
     tipo_data = dict(tipo_data_row)
     empresas_data = db.fetch_all_empresas() 
@@ -341,23 +548,24 @@ def tipo_json(tipo_id):
     return jsonify({"tipo": tipo_data, "unidades": unidades_data})
 
 @app.route('/equipamento/editar/<int:equip_id>', methods=['POST']) 
+@login_required
 def post_editar_equipamento(equip_id):
     try:
         equip_data_row = db.fetch_equipamento_completo_by_id(equip_id)
         if not equip_data_row:
             return jsonify({"success": False, "message": "Equipamento não encontrado."}), 404
-        
+
         if request.method == 'POST':
             dados_atualizados = {
-                'nome': request.form.get('edit_nome'), 
+                'nome': request.form.get('edit_nome'),
                 'fabricante': request.form.get('edit_fabricante'),
                 'modelo': request.form.get('edit_modelo'),
                 'numero_serie': request.form.get('edit_numero_serie'),
-                'tag': request.form.get('edit_tag'), 
+                'tag': request.form.get('edit_tag'),
                 'status': request.form.get('edit_status_lista'),
- 'localizacao': request.form.get('edit_localizacao'),
+                'localizacao': request.form.get('edit_localizacao'),
                 'empresa_id': request.form.get('edit_empresa_id') if request.form.get('edit_empresa_id') not in [None, "None", ""] else None,
- 'observacoes_equipamento': request.form.get('edit_observacoes_equipamento'),
+                'observacoes_equipamento': request.form.get('edit_observacoes_equipamento'),
                 'tipo_equipamento_id': request.form.get('edit_tipo_equipamento_id') if request.form.get('edit_tipo_equipamento_id') not in [None, "None", ""] else None,
                 'faixa_de_uso': request.form.get('edit_faixa_de_uso'),
                 'ativo': 'edit_ativo' in request.form,
@@ -370,16 +578,6 @@ def post_editar_equipamento(equip_id):
             elif dados_atualizados['em_calibracao']:
                 dados_atualizados['status'] = "Em Calibração"
 
-        tipos_equipamento = db.fetch_all_tipos_equipamento()
-
-        # Retornar os dados do equipamento, a lista de empresas e os tipos de equipamento
-        # Remova o return jsonify(...) daqui, pois esta rota POST deve apenas atualizar e redirecionar
-        # return jsonify({
-        #     "equipamento": equip_data,
-        #     "empresas": empresas_list, # Incluir a lista de empresas
-        #     "tipos_equipamento": [dict(row) for row in tipos_equipamento]
-        # })
-
         if not dados_atualizados['nome']:
             return jsonify(success=False, message="O nome do equipamento é obrigatório."), 400
         if db.update_equipamento_principal(equip_id, dados_atualizados):
@@ -387,9 +585,10 @@ def post_editar_equipamento(equip_id):
         else:
             return jsonify(success=False, message="Erro ao atualizar equipamento."), 400
     except Exception as e:
-        return jsonify(success=False, message=f"Erro ao atualizar equipamento: {e}"), 500
+        return jsonify(success=False, message=f"Erro ao atualizar equipamento: {e}"), "danger"
 
 @app.route('/equipamento/excluir/<int:equip_id>', methods=['POST'])
+@login_required
 def excluir_equipamento(equip_id):
     if db.delete_equipamento(equip_id, app.config['UPLOAD_FOLDER'], app_utils_instance=utils):
         flash('Equipamento excluído com sucesso!', 'success')
@@ -398,6 +597,7 @@ def excluir_equipamento(equip_id):
     return redirect(url_for('lista_equipamentos'))
 
 @app.route('/tipos', methods=['GET'])
+@login_required
 def gerenciar_tipos():
     tipos_raw = db.fetch_all_tipos_equipamento()
     tipos_com_unidades = []
@@ -411,6 +611,7 @@ def gerenciar_tipos():
 
 @app.route('/tipo/salvar', methods=['POST'])
 @app.route('/tipo/salvar/<int:tipo_id>', methods=['POST'])
+@login_required
 def salvar_tipo(tipo_id=None):
     nome_tipo = request.form.get('nome_tipo')
     unidades_json_data = request.form.get('unidades_json_data', '[]') 
@@ -457,6 +658,7 @@ def salvar_tipo(tipo_id=None):
     return redirect(url_for('gerenciar_tipos'))
 
 @app.route('/tipos/adicionar_ajax', methods=['POST'])
+@login_required
 def salvar_tipo_ajax():
     data = request.get_json()
     nome_tipo = data.get('nome_tipo')
@@ -476,6 +678,7 @@ def salvar_tipo_ajax():
 
 
 @app.route('/tipo/excluir/<int:tipo_id>', methods=['POST'])
+@login_required
 def excluir_tipo(tipo_id):
     unidades_associadas = db.fetch_unidades_by_tipo_id(tipo_id)
     for unidade in unidades_associadas:
@@ -492,12 +695,14 @@ def excluir_tipo(tipo_id):
 
 # --- Rotas para Empresas ---
 @app.route('/empresas')
+@login_required
 def gerenciar_empresas():
     empresas_data = db.fetch_all_empresas()
     return render_template('gerenciar_empresas.html', empresas=empresas_data)
 
 @app.route('/empresa/salvar', methods=['POST'])
 @app.route('/empresa/salvar/<int:empresa_id>', methods=['POST'])
+@login_required
 def salvar_empresa(empresa_id=None):
     if request.method == 'POST':
         dados_empresa = {
@@ -605,6 +810,7 @@ def salvar_empresa(empresa_id=None):
 
 
 @app.route('/empresa/json/<int:empresa_id>')
+@login_required
 def empresa_json(empresa_id):
     empresa_data = db.fetch_empresa_by_id(empresa_id)
     if empresa_data:
@@ -612,6 +818,7 @@ def empresa_json(empresa_id):
     return jsonify({"error": "Empresa não encontrada"}), 404
 
 @app.route('/empresa/excluir/<int:empresa_id>', methods=['POST'])
+@login_required
 def excluir_empresa(empresa_id):
     if db.delete_empresa(empresa_id, app.config['UPLOAD_FOLDER_EMPRESAS']):
         flash('Empresa excluída com sucesso!', 'success')
@@ -620,14 +827,15 @@ def excluir_empresa(empresa_id):
     return redirect(url_for('gerenciar_empresas'))
 
 @app.route('/consultar_cnpj/<cnpj>')
+@login_required
 def consultar_cnpj(cnpj):
     cnpj_limpo = ''.join(filter(str.isdigit, cnpj))
     if len(cnpj_limpo) != 14:
         return jsonify({"error": "CNPJ inválido. Deve conter 14 dígitos."}), 400
-    
+
     try:
         response = requests.get(f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}", timeout=10)
-        response.raise_for_status() 
+        response.raise_for_status()
         data = response.json()
         empresa_info = {
             "razao_social": data.get("razao_social"),
@@ -639,8 +847,8 @@ def consultar_cnpj(cnpj):
             "cep": data.get("cep", "").replace(".", "").replace("-", ""),
             "municipio": data.get("municipio"),
             "uf": data.get("uf"),
-            "telefone": data.get("ddd_telefone_1") or data.get("ddd_telefone_2"), 
-            "email": data.get("email") 
+            "telefone": data.get("ddd_telefone_1") or data.get("ddd_telefone_2"),
+            "email": data.get("email")
         }
         return jsonify(empresa_info)
     except requests.exceptions.HTTPError as http_err:
@@ -651,165 +859,74 @@ def consultar_cnpj(cnpj):
         return jsonify({"error": f"Erro ao consultar CNPJ: {e}"}), 500
 
 @app.route('/anexos_empresas/<path:subpath>')
+@login_required
 def servir_anexo_empresa(subpath):
     return send_from_directory(app.config['UPLOAD_FOLDER_EMPRESAS'], subpath)
 
-
-# --- Rotas para Análises (existentes) ---
-@app.route('/equipamento/<int:equip_id>/analise/nova', methods=['POST']) 
-def nova_analise(equip_id):
-    equip = db.fetch_equipamento_completo_by_id(equip_id)
-    if not equip:
-        return jsonify({"success": False, "message": "Equipamento não encontrado."}), 404
-    
-    if request.method == 'POST':
-        dados_analise = {
-            'numero_certificado_analisado': request.form.get('analise_numero_certificado'), 
-            'data_analise_manual': request.form.get('analise_data_manual') or None,
-            'responsavel_analise': request.form.get('analise_responsavel'),
-            'data_calibracao_analisada': request.form.get('analise_data_calibracao') or None,
-            'data_prox_calibracao_analisada': request.form.get('analise_data_prox_calibracao') or None,
-            'resultado_geral_certificado': request.form.get('analise_resultado_geral'),
- 'observacoes_analise': request.form.get('analise_observacoes'),
- 'empresa_calibracao_id': request.form.get('analiseEmpresaCalibracao') if request.form.get('analiseEmpresaCalibracao') not in [None, "None", ""] else None
-        }
-        pontos_json = request.form.get('analise_pontos_json_data')
-        
-        if not dados_analise['numero_certificado_analisado']:
-            return jsonify({"success": False, "message": "Número do certificado é obrigatório."}), 400
-        
-        analise_id = db.add_analise_certificado(equip_id, dados_analise, pontos_analise_json=pontos_json)
-        if analise_id:
-            if 'analise_anexos' in request.files: 
-                files = request.files.getlist('analise_anexos')
-                for file in files:
-                    if file and file.filename != '':
-                        filename_original = secure_filename(file.filename)
-                        ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                        filename_armazenado = f"{ts}_{filename_original}"
-                        caminho_relativo_dir_analise = str(analise_id)
-                        caminho_relativo_completo = os.path.join(caminho_relativo_dir_analise, filename_armazenado)
-                        dir_analise_absoluto = os.path.join(app.config['UPLOAD_FOLDER'], caminho_relativo_dir_analise)
-                        os.makedirs(dir_analise_absoluto, exist_ok=True)
-                        caminho_destino_absoluto = os.path.join(dir_analise_absoluto, filename_armazenado)
-                        file.save(caminho_destino_absoluto)
-                        db.add_anexo(analise_id, filename_original, filename_armazenado, caminho_relativo_completo) 
-
-            db.update_ultima_analise_em_equipamento(equip_id, dados_analise)
-            historico_atualizado = db.fetch_analises_by_equipamento_id(equip_id, add_is_latest_flag=True, app_utils_instance=utils)
-            return jsonify({
-                "success": True, 
-                "message": "Nova análise adicionada!", 
-                "historico_analises": historico_atualizado, 
-                "equip_id": equip_id
-            })
-        else:
-            return jsonify({"success": False, "message": "Erro ao adicionar nova análise."}), 500
-        
-    return jsonify({"success": False, "message": "Método não permitido."}), 405
-
-@app.route('/analise/editar/<int:analise_id>', methods=['POST']) 
-def editar_analise(analise_id):
-    analise_existente = db.fetch_analise_by_id(analise_id, app_utils_instance=utils) 
-    if not analise_existente:
-        return jsonify({"success": False, "message": "Análise não encontrada."}), 404
-    
-    if not analise_existente.get('is_latest', False):
-        return jsonify({"success": False, "message": "Apenas a análise mais recente pode ser editada."}), 403
-
-    analise_data = dict(analise_existente)
-    equip_id = analise_data['equipamento_id'] 
-
-    if request.method == 'POST':
-        dados_atualizados_analise = {
-            'numero_certificado_analisado': request.form.get('analise_numero_certificado'),
-            'data_analise_manual': request.form.get('analise_data_manual') or None,
-            'responsavel_analise': request.form.get('analise_responsavel'),
-            'data_calibracao_analisada': request.form.get('analise_data_calibracao') or None,
-            'data_prox_calibracao_analisada': request.form.get('analise_data_prox_calibracao') or None,
-            'resultado_geral_certificado': request.form.get('analise_resultado_geral'),
-            'observacoes_analise': request.form.get('analise_observacoes')
-        }
-        pontos_json = request.form.get('analise_pontos_json_data')
-        
-        if not dados_atualizados_analise['numero_certificado_analisado']:
-            return jsonify({"success": False, "message": "Número do certificado é obrigatório."}), 400
-        
-        if db.update_analise_certificado(analise_id, dados_atualizados_analise, pontos_analise_json=pontos_json, app_utils_instance=utils):
-            if 'analise_anexos' in request.files:
-                files = request.files.getlist('analise_anexos')
-                for file in files:
-                    if file and file.filename != '':
-                        filename_original = secure_filename(file.filename)
-                        ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                        filename_armazenado = f"{ts}_{filename_original}"
-                        caminho_relativo_dir_analise = str(analise_id)
-                        caminho_relativo_completo = os.path.join(caminho_relativo_dir_analise, filename_armazenado)
-                        dir_analise_absoluto = os.path.join(app.config['UPLOAD_FOLDER'], caminho_relativo_dir_analise)
-                        os.makedirs(dir_analise_absoluto, exist_ok=True)
-                        caminho_destino_absoluto = os.path.join(dir_analise_absoluto, filename_armazenado)
-                        file.save(caminho_destino_absoluto)
-                        db.add_anexo(analise_id, filename_original, filename_armazenado, caminho_relativo_completo) 
-            
-            anexos_a_excluir_ids = request.form.getlist('excluir_anexo_ids') 
-            for anexo_id_para_excluir in anexos_a_excluir_ids:
-                db.delete_anexo(int(anexo_id_para_excluir), app.config['UPLOAD_FOLDER'])
-
-            db.update_ultima_analise_em_equipamento(equip_id, dados_atualizados_analise)
-            historico_atualizado = db.fetch_analises_by_equipamento_id(equip_id, add_is_latest_flag=True, app_utils_instance=utils)
-            return jsonify({
-                "success": True, 
-                "message": "Análise atualizada!",
-                "historico_analises": historico_atualizado,
-                "equip_id": equip_id
-            })
-        else:
-            if not analise_existente.get('is_latest', False): 
-                 return jsonify({"success": False, "message": "Apenas a análise mais recente pode ser editada."})
-            else: 
-                return jsonify({"success": False, "message": "Erro ao atualizar análise."}), 500
-
-    return jsonify({"success": False, "message": "Método não permitido."}), 405
-
-@app.route('/analise/excluir', methods=['POST']) 
-def excluir_analise():
-    analise_id = request.form.get('analise_id', type=int)
-    
-    if not analise_id:
-        return jsonify({"success": False, "message": "ID da análise não fornecido."}), 400
-    
-    success, equip_id = db.delete_analise_certificado(analise_id, app.config['UPLOAD_FOLDER'], app_utils_instance=utils) 
-    
-    if success:
-        historico_atualizado = db.fetch_analises_by_equipamento_id(equip_id, add_is_latest_flag=True, app_utils_instance=utils)
-        return jsonify({
-            "success": True, 
-            "message": "Análise excluída com sucesso!", 
-            "historico_analises": historico_atualizado,
-            "equip_id": equip_id 
-        })
-    else:
-        return jsonify({"success": False, "message": "Erro ao excluir análise."}), 500
-
-
 @app.route('/anexos/<path:subpath>')
+@login_required
 def servir_anexo(subpath):
     return send_from_directory(app.config['UPLOAD_FOLDER'], subpath)
 
-
 @app.route('/configuracoes', methods=['GET', 'POST'])
+# @login_required # Manter sem login_required por enquanto para teste das configs
 def configuracoes_notificacao():
-    app_utils_instance = AppUtils(db) 
+    # Esta rota ainda não está protegida com @login_required para manter a funcionalidade atual.
+    app_utils_instance = AppUtils(db)
     settings = app_utils_instance.load_notification_settings()
 
     if request.method == 'POST':
-        settings['remetente_email'] = request.form.get('remetente_email', settings['remetente_email'])
-        settings['remetente_senha'] = request.form.get('remetente_senha', settings['remetente_senha'])
-        settings['para'] = request.form.get('para', settings['para'])
-        settings['cc'] = request.form.get('cc', settings['cc'])
-        settings['assunto'] = request.form.get('assunto', settings['assunto'])
-        settings['corpo_template_email'] = request.form.get('corpo_template_email', settings['corpo_template_email'])
+        # Campos de E-mail
+        remetente_email = request.form.get('remetente_email', settings['remetente_email'])
+        remetente_senha = request.form.get('remetente_senha', settings['remetente_senha'])
+        para = request.form.get('para', settings['para'])
+        cc = request.form.get('cc', settings['cc'])
+        assunto = request.form.get('assunto', settings['assunto'])
+        corpo_template_email = request.form.get('corpo_template_email', settings['corpo_template_email'])
         
+        # Campos de WhatsApp/Gemini
+        zapi_instancia = request.form.get('zapi_instancia', settings['zapi_instancia'])
+        zapi_token_instancia = request.form.get('zapi_token_instancia', settings['zapi_token_instancia'])
+        zapi_client_token = request.form.get('zapi_client_token', settings['zapi_client_token'])
+        gemini_api_key = request.form.get('gemini_api_key', settings['gemini_api_key'])
+        whatsapp_para = request.form.get('whatsapp_para', settings['whatsapp_para'])
+        corpo_template_whatsapp = request.form.get('corpo_template_whatsapp', settings['corpo_template_whatsapp'])
+
+        # Critérios e Agendamento
+        criterio_padrao_vencimento = request.form.get('criterio_padrao_vencimento', settings['criterio_padrao_vencimento'])
+        agendamento_periodicidade = request.form.get('agendamento_periodicidade', settings['agendamento_periodicidade'])
+        agendamento_data_inicio = request.form.get('agendamento_data_inicio', settings['agendamento_data_inicio'])
+        agendamento_horario = request.form.get('agendamento_horario', settings['agendamento_horario'])
+        criterio_email_manual = request.form.get('criterio_email_manual', settings['criterio_email_manual'])
+        criterio_wpp_manual = request.form.get('criterio_wpp_manual', settings['criterio_wpp_manual'])
+
+        # Campos da Tabela para Notificação
+        campos_tabela_selecionados = {}
+        for key in CAMPOS_TABELA_NOTIFICACAO.keys():
+            # Verifica se o campo está presente no form (significa que foi marcado)
+            campos_tabela_selecionados[key] = request.form.get(f'campo_tabela_{key}', 'off') == 'on'
+            
+        settings = {
+            "remetente_email": remetente_email,
+            "remetente_senha": remetente_senha,
+            "para": para,
+            "cc": cc,
+            "assunto": assunto,
+            "corpo_template_email": corpo_template_email,
+            "zapi_instancia": zapi_instancia,
+            "zapi_token_instancia": zapi_token_instancia,
+            "zapi_client_token": zapi_client_token,
+            "gemini_api_key": gemini_api_key,
+            "whatsapp_para": whatsapp_para,
+            "corpo_template_whatsapp": corpo_template_whatsapp,
+            "criterio_padrao_vencimento": criterio_padrao_vencimento,
+            "agendamento_periodicidade": agendamento_periodicidade,
+            "agendamento_data_inicio": agendamento_data_inicio,
+            "agendamento_horario": agendamento_horario,
+            "criterio_email_manual": criterio_email_manual,
+            "criterio_wpp_manual": criterio_wpp_manual,
+            "campos_tabela": campos_tabela_selecionados # Atualiza o dicionário de campos selecionados
+        }
         settings['zapi_instancia'] = request.form.get('zapi_instancia', settings['zapi_instancia'])
         settings['zapi_token_instancia'] = request.form.get('zapi_token_instancia', settings['zapi_token_instancia'])
         settings['zapi_client_token'] = request.form.get('zapi_client_token', settings['zapi_client_token'])
@@ -822,11 +939,6 @@ def configuracoes_notificacao():
         settings['agendamento_data_inicio'] = request.form.get('agendamento_data_inicio', settings['agendamento_data_inicio'])
         settings['agendamento_horario'] = request.form.get('agendamento_horario', settings['agendamento_horario'])
         settings['criterio_email_manual'] = request.form.get('criterio_email_manual', settings['criterio_email_manual'])
-        settings['criterio_wpp_manual'] = request.form.get('criterio_wpp_manual', settings['criterio_wpp_manual'])
-        
-        campos_tabela_selecionados = {}
-        for key in CAMPOS_TABELA_NOTIFICACAO.keys():
-            campos_tabela_selecionados[key] = key in request.form 
         settings['campos_tabela'] = campos_tabela_selecionados
 
         try:
@@ -847,6 +959,7 @@ def configuracoes_notificacao():
 
 # --- Rota para Envio de E-mail Manual ---
 @app.route('/enviar_notificacao_email_manual', methods=['POST'])
+@login_required
 def enviar_notificacao_email_manual():
     settings = utils.load_notification_settings()
     criterio_selecionado = request.form.get('criterio_email_manual', settings['criterio_email_manual']) 
@@ -959,7 +1072,7 @@ def _gerar_tabela_texto_para_whatsapp(equipamentos_lista, campos_selecionados_co
         texto_final += "\n" 
     return texto_final.strip()
 
-def _gerar_mensagem_whatsapp_com_gemini(tabela_texto, api_key):
+def _gerar_mensagem_whatsapp_com_gemini(tabela_texto, api_key, settings):
     prompt = (
         "Você é um assistente responsável por notificar sobre calibrações de equipamentos.\n"
         "Gere uma mensagem de WhatsApp amigável e profissional informando sobre os equipamentos abaixo que precisam de atenção. Não precisa ser tão formal\n"
@@ -967,6 +1080,10 @@ def _gerar_mensagem_whatsapp_com_gemini(tabela_texto, api_key):
         "Inclua uma saudação cordial e uma despedida.\n\n"
         "Equipamentos para Notificação:\n"
         f"{tabela_texto}\n\n"
+        "Use o seguinte modelo para os dados de cada equipamento:\n"
+        "* [TIPO DO EQUIPAMENTO (MAIÚSCULAS)]\n"
+        "[Lista dos campos selecionados com seus valores no molde Campo: Valor]\n"
+        "\n"
         "Lembre-se de manter a mensagem concisa e clara para o WhatsApp.\n"
         "Não indique no texto o nome e departamento e tão pouco que se trata de um e-mail. Coloque sempre ao final: Mensagem automática\n"
         "Padronize a estrutura dos equipamentos no seguinte molde: exemplo:\n"
@@ -976,14 +1093,14 @@ def _gerar_mensagem_whatsapp_com_gemini(tabela_texto, api_key):
         "    * Nº Série: (Não informado)\n"
         "    * Próxima Calibração: 20/05/2025\n"
         "    * Dias Vencidos: 1 dia\n" 
-        "    * Status: Vencido\n"
+        "    * Status: Calibração Vencida\n"
         "    * Localização: Laboratório"
     )
     
     gemini_api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}]
-    }
+    } 
     headers = {'Content-Type': 'application/json'}
     
     try:
@@ -1054,6 +1171,7 @@ def _enviar_mensagem_whatsapp_zapi(settings, mensagem):
 
 
 @app.route('/enviar_notificacao_whatsapp_manual', methods=['POST'])
+@login_required
 def enviar_notificacao_whatsapp_manual():
     settings = utils.load_notification_settings()
     criterio_selecionado = request.form.get('criterio_wpp_manual', settings['criterio_wpp_manual'])
@@ -1101,7 +1219,7 @@ def enviar_notificacao_whatsapp_manual():
     if not tabela_texto:
          return jsonify({"success": True, "message": "Nenhum dado de equipamento para gerar a mensagem."})
 
-    mensagem_gerada_gemini = _gerar_mensagem_whatsapp_com_gemini(tabela_texto, settings['gemini_api_key'])
+    mensagem_gerada_gemini = _gerar_mensagem_whatsapp_com_gemini(tabela_texto, settings['gemini_api_key'], settings)
     
     if "Erro" in mensagem_gerada_gemini: 
         return jsonify({"success": False, "message": mensagem_gerada_gemini}), 500
@@ -1121,6 +1239,7 @@ def enviar_notificacao_whatsapp_manual():
 
 # --- Rotas de Exportação Excel ---
 @app.route('/exportar_geral_excel')
+@login_required
 def exportar_geral_excel():
     search_query = request.args.get('search', '') 
     if search_query:
@@ -1225,21 +1344,17 @@ def exportar_geral_excel():
                 for anexo_row in anexos_da_an:
                     anexo = dict(anexo_row)
                     ws_anexos.append([
-                        analise.get('id'), analise.get('numero_certificado_analisado'),
+                        analise.get('id'), 
+                        analise.get('numero_certificado_analisado'),
                         anexo.get('nome_arquivo_original'),
                         anexo.get('caminho_relativo_armazenado'),
-                        utils.format_date_for_display(anexo.get('data_anexo')) 
-                    ])
-
-    for sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        for col_idx, column_cells_tuple in enumerate(ws.columns):
-            max_length = 0
-            column_letter = get_column_letter(col_idx + 1)
+                        utils.format_date_for_display(anexo.get('data_anexo'))
+                ])
             for cell in column_cells_tuple:
                 try:
                     if cell.value is not None and len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
+
                 except:
                     pass
             adjusted_width = (max_length + 2 if max_length > 0 else 12) 
@@ -1256,6 +1371,7 @@ def exportar_geral_excel():
 
 
 @app.route('/exportar_individual_excel/<int:equip_id>')
+@login_required
 def exportar_individual_excel(equip_id):
     equip_data = db.fetch_equipamento_completo_by_id(equip_id)
     if not equip_data:
@@ -1347,7 +1463,7 @@ def exportar_individual_excel(equip_id):
                 ponto.get('regra_aplicada_ponto'), ponto.get('resultado_ponto'),
                 ponto.get('observacoes_ponto')
             ])
-        
+
         anexos_da_an = db.fetch_anexos_by_analise_id(analise['id'])
         for anexo_row in anexos_da_an:
             anexo = dict(anexo_row)
@@ -1378,41 +1494,19 @@ def exportar_individual_excel(equip_id):
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment;filename=relatorio_equip_{equip_id}_{equip.get('nome', '')}.xlsx"}
-    )
-
-
-def init_db_command():
-    print("Tentando inicializar tabelas (SQLite)...")
-    # Cria a pasta para anexos de empresas se não existir
-    if not os.path.exists(app.config['UPLOAD_FOLDER_EMPRESAS']):
-        os.makedirs(app.config['UPLOAD_FOLDER_EMPRESAS'])
-        print(f"Pasta de anexos de empresas criada: {app.config['UPLOAD_FOLDER_EMPRESAS']}")
-    db.create_tables_if_not_exist()
-    db.update_schema()
-    print(f"Banco de dados SQLite inicializado em: {DB_FULL_PATH}") 
-
-@app.cli.command("init-db")
-def init_db_cli_command():
-    with app.app_context():
-        init_db_command()
-
-
-if __name__ == '__main__':
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
-    if not os.path.exists(app.config['UPLOAD_FOLDER_EMPRESAS']): 
-        os.makedirs(app.config['UPLOAD_FOLDER_EMPRESAS'])
-    
-    with app.app_context():
-        db.create_tables_if_not_exist() 
-        db.update_schema()
-
-    app.run(debug=True)
+ )
 @app.route('/equipamento/<int:equip_id>/analise/nova_form')
 def nova_analise_form(equip_id):
     equip = db.fetch_equipamento_completo_by_id(equip_id)
     if not equip:
         return jsonify({"error": "Equipamento não encontrado"}), 404
 
-    empresas_calibracao = db.fetch_empresas_calibracao()
-    return render_template('partials/form_nova_analise.html', equip=equip, empresas_calibracao=empresas_calibracao)
+    # Adicionei a chamada get_db() aqui também, caso seja usada nesta rota.
+    if 'db' not in g:
+        g.db = DatabaseManager(DB_FULL_PATH)
+    db = g.db
+
+    return render_template('nova_analise.html', equipamento=equip)
+
+if __name__ == "__main__":
+    app.run(debug=True)
